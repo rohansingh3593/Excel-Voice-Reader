@@ -12,7 +12,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   file_picker: ^8.1.7
   excel: ^4.0.6
-  flutter_tts: ^4.2.0
+  # Uses the no-Windows fork so Windows builds do not require nuget.exe.
+  # Windows speech is handled by lib/services/tts_service.dart via PowerShell SAPI.
+  flutter_tts_no_windows: ^1.0.0
 
 dev_dependencies:
   flutter_test:
