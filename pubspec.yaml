@@ -1,0 +1,25 @@
+name: excel_voice_reader
+description: A Flutter app for reading Excel sheet content aloud with selectable accents.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  file_picker: ^8.1.7
+  excel: ^4.0.6
+  # Uses the no-Windows fork so Windows builds do not require nuget.exe.
+  # Windows speech is handled by lib/services/tts_service.dart via PowerShell SAPI.
+  flutter_tts_no_windows: ^1.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
