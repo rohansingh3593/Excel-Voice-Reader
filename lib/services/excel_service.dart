@@ -30,7 +30,6 @@ class ExcelWorkbookData {
   final Map<String, String> sheetErrors;
 }
 
-
 class ExcelService {
   static const List<String> _requiredColumns = ['keyword', 'topic', 'content'];
 
@@ -45,16 +44,28 @@ class ExcelService {
       return null;
     }
 
-    final pickedFile = result.files.single;
+    final pickedFile = result.files.first;
+    if (!_isXlsxFile(pickedFile)) {
+      throw const FormatException('Please choose a valid .xlsx file.');
+    }
+
     final bytes = await _readPickedFile(pickedFile);
-    final workbook = Excel.decodeBytes(bytes);
+    if (bytes == null) {
+      throw const FormatException('Unable to read this Excel file.');
+    }
+
+    final Excel workbook;
+    try {
+      workbook = Excel.decodeBytes(bytes);
+    } catch (_) {
+      throw const FormatException(
+        'Unable to open this Excel file. Please choose a valid .xlsx file.',
+      );
+    }
+
     final sheetNames = workbook.tables.keys.toList(growable: false);
     final rowsBySheet = <String, List<ExcelRowData>>{};
     final sheetErrors = <String, String>{};
-
-    if (sheetNames.isEmpty) {
-      throw const FormatException('No sheets were found in the selected Excel file.');
-    }
 
     for (final sheetName in sheetNames) {
       final sheet = workbook.tables[sheetName];
@@ -69,12 +80,6 @@ class ExcelService {
       }
     }
 
-    if (rowsBySheet.isEmpty) {
-      throw FormatException(sheetErrors.entries
-          .map((entry) => '${entry.key}: ${entry.value}')
-          .join('\n'));
-    }
-
     return ExcelWorkbookData(
       fileName: pickedFile.name,
       sheetNames: sheetNames,
@@ -83,18 +88,31 @@ class ExcelService {
     );
   }
 
-  Future<Uint8List> _readPickedFile(PlatformFile pickedFile) async {
-    final bytes = pickedFile.bytes;
-    if (bytes != null) {
-      return bytes;
+  bool _isXlsxFile(PlatformFile pickedFile) {
+    final extension = pickedFile.extension?.toLowerCase();
+    if (extension != null && extension.isNotEmpty) {
+      return extension == 'xlsx';
+    }
+
+    return pickedFile.name.toLowerCase().endsWith('.xlsx');
+  }
+
+  Future<Uint8List?> _readPickedFile(PlatformFile pickedFile) async {
+    final fileBytes = pickedFile.bytes;
+    if (fileBytes != null) {
+      return fileBytes;
     }
 
     final path = pickedFile.path;
-    if (path == null) {
-      throw const FileSystemException('Unable to read the selected Excel file.');
+    if (path != null) {
+      try {
+        return await File(path).readAsBytes();
+      } on FileSystemException {
+        return null;
+      }
     }
 
-    return File(path).readAsBytes();
+    return null;
   }
 
   List<ExcelRowData> _readSheetRows(List<List<Data?>> rows) {
@@ -105,7 +123,9 @@ class ExcelService {
 
     final headers = <String, int>{};
     for (var index = 0; index < rows[headerIndex].length; index++) {
-      final normalizedHeader = _normalizeHeader(_cellText(rows[headerIndex][index]));
+      final normalizedHeader = _normalizeHeader(
+        _cellText(rows[headerIndex][index]),
+      );
       if (normalizedHeader.isNotEmpty) {
         headers[normalizedHeader] = index;
       }

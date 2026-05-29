@@ -63,7 +63,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _workbook = workbook;
-        _selectedSheet = workbook.rowsBySheet.keys.first;
+        _selectedSheet =
+            workbook.sheetNames.isEmpty ? null : workbook.sheetNames.first;
         _selectedRow = null;
       });
     } on FormatException catch (error) {
@@ -405,11 +406,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildContentSection() {
     final rows = _visibleRows;
 
-    if (_workbook == null) {
+    final workbook = _workbook;
+    if (workbook == null) {
       return _buildEmptyState(
         icon: Icons.upload_file_outlined,
         title: 'No Excel file selected',
         message: 'Tap Select Excel File to upload an .xlsx workbook from your phone storage.',
+      );
+    }
+
+    if (workbook.sheetNames.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.table_chart_outlined,
+        title: 'No sheets found',
+        message: 'This workbook opened successfully, but it does not contain any sheets to display.',
       );
     }
 
