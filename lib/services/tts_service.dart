@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_tts_no_windows/flutter_tts.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class AccentOption {
   const AccentOption({required this.label, required this.languageCode});
