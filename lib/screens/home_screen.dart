@@ -11,11 +11,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ExcelService _excelService = ExcelService();
+  final ExcelService _excelService = const ExcelService();
   final TtsService _ttsService = TtsService();
 
   ExcelWorkbookData? _workbook;
   String? _selectedSheet;
+  String? _selectedKeyword;
+  String? _selectedTopic;
   ExcelRowData? _selectedRow;
   AccentOption _selectedAccent = TtsService.accents.first;
   SpeechSpeed _selectedSpeed = SpeechSpeed.normal;
@@ -23,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  List<ExcelRowData> get _visibleRows {
+  List<ExcelRowData> get _sheetRows {
     final workbook = _workbook;
     final selectedSheet = _selectedSheet;
     if (workbook == null || selectedSheet == null) {
@@ -31,6 +33,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return workbook.rowsBySheet[selectedSheet] ?? const [];
+  }
+
+  List<ExcelRowData> get _selectedTopicRows {
+    final sheetRows = _sheetRows;
+    if (_selectedKeyword == null || _selectedTopic == null) {
+      return const [];
+    }
+
+    return sheetRows.where((row) {
+      return row.keyword == _selectedKeyword && row.topic == _selectedTopic;
+    }).toList(growable: false);
   }
 
   String? get _selectedSheetError {
@@ -65,6 +78,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _workbook = workbook;
         _selectedSheet =
             workbook.sheetNames.isEmpty ? null : workbook.sheetNames.first;
+        _selectedKeyword = null;
+        _selectedTopic = null;
         _selectedRow = null;
       });
     } on FormatException catch (error) {
@@ -75,12 +90,16 @@ class _HomeScreenState extends State<HomeScreen> {
         _errorMessage = error.message;
       });
     } catch (error) {
+      final message = error.toString().isNotEmpty
+          ? error.toString()
+          : 'Unable to open this Excel file. Please choose a valid .xlsx or .xlsm file.';
       setState(() {
         _workbook = null;
         _selectedSheet = null;
         _selectedRow = null;
-        _errorMessage = 'Unable to open this Excel file. Please choose a valid .xlsx file.';
+        _errorMessage = message;
       });
+      debugPrint('Excel load error: $error');
     } finally {
       if (mounted) {
         setState(() {
@@ -90,13 +109,67 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _selectKeyword(String keyword) {
+    setState(() {
+      _selectedKeyword = keyword;
+      _selectedTopic = null;
+      _selectedRow = null;
+    });
+  }
+
+  Future<void> _selectTopic(String topic) async {
+    debugPrint(
+        'DEBUG: _selectTopic called with topic=$topic, _selectedKeyword=$_selectedKeyword');
+    final rows = _sheetRows
+        .where((row) => row.keyword == _selectedKeyword && row.topic == topic)
+        .toList(growable: false);
+    debugPrint('DEBUG: Found ${rows.length} rows for this topic');
+    setState(() {
+      _selectedTopic = topic;
+      _selectedRow = rows.isNotEmpty ? rows.first : null;
+    });
+
+    if (rows.isEmpty) {
+      _showSnackBar('No content rows found for this topic.');
+      debugPrint('DEBUG: No rows found');
+      return;
+    }
+
+    final text =
+        rows.map((row) => _buildReadableContent(row.content)).join('\n\n');
+    debugPrint('DEBUG: Prepared text for speech (length=${text.length})');
+
+    if (text.trim().isEmpty) {
+      _showSnackBar('Selected topic has no readable content.');
+      debugPrint('DEBUG: Text is empty after cleaning');
+      return;
+    }
+
+    debugPrint('DEBUG: Calling _ttsService.speak()');
+    await _ttsService.speak(
+      text: text,
+      accent: _selectedAccent,
+      speed: _selectedSpeed,
+      pitch: _pitch,
+    );
+    debugPrint('DEBUG: speak() returned');
+  }
+
   Future<void> _readRow(ExcelRowData row) async {
     setState(() {
       _selectedRow = row;
     });
 
+    final text = _buildReadableContent(row.content);
+    debugPrint('DEBUG: _readRow - prepared text (length=${text.length})');
+    if (text.trim().isEmpty) {
+      _showSnackBar('This row has no readable content to play.');
+      return;
+    }
+
+    debugPrint('DEBUG: _readRow - calling speak()');
     await _ttsService.speak(
-      text: row.content,
+      text: text,
       accent: _selectedAccent,
       speed: _selectedSpeed,
       pitch: _pitch,
@@ -119,6 +192,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _stopSpeech() async {
     await _ttsService.stop();
+  }
+
+  Future<void> _resumeSpeech() async {
+    await _ttsService.resume();
   }
 
   void _showSnackBar(String message) {
@@ -186,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             'Upload an .xlsx file, select a sheet, and listen to the content column in your preferred English accent.',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withOpacity(0.92),
+              color: const Color.fromRGBO(255, 255, 255, 0.92),
             ),
           ),
         ],
@@ -211,7 +288,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.upload_file_rounded),
-              label: Text(_isLoading ? 'Loading Excel File...' : 'Select Excel File'),
+              label: Text(
+                  _isLoading ? 'Loading Excel File...' : 'Select Excel File'),
             ),
             if (fileName != null) ...[
               const SizedBox(height: 10),
@@ -268,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             DropdownButtonFormField<String>(
-              value: _selectedSheet,
+              initialValue: _selectedSheet,
               decoration: const InputDecoration(
                 labelText: 'Sheet',
                 prefixIcon: Icon(Icons.table_chart_outlined),
@@ -295,7 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<AccentOption>(
-              value: _selectedAccent,
+              initialValue: _selectedAccent,
               decoration: const InputDecoration(
                 labelText: 'Accent / Language',
                 prefixIcon: Icon(Icons.record_voice_over_outlined),
@@ -332,9 +410,31 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Voice Controls',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Voice Controls',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: _ttsService.queueLength,
+                  builder: (context, len, child) => Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: len > 0
+                          ? const Color(0xFFEEF2FF)
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Text('Queue: $len',
+                        style: const TextStyle(fontSize: 13)),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -342,7 +442,7 @@ class _HomeScreenState extends State<HomeScreen> {
               runSpacing: 10,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: _visibleRows.isEmpty ? null : _playSelectedRow,
+                  onPressed: _selectedRow == null ? null : _playSelectedRow,
                   icon: const Icon(Icons.play_arrow_rounded),
                   label: const Text('Play'),
                 ),
@@ -352,9 +452,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Pause'),
                 ),
                 FilledButton.tonalIcon(
+                  onPressed: _resumeSpeech,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Resume'),
+                ),
+                FilledButton.tonalIcon(
                   onPressed: _stopSpeech,
                   icon: const Icon(Icons.stop_rounded),
                   label: const Text('Stop'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => _ttsService.skip(),
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Next'),
                 ),
               ],
             ),
@@ -404,14 +514,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildContentSection() {
-    final rows = _visibleRows;
-
     final workbook = _workbook;
     if (workbook == null) {
       return _buildEmptyState(
         icon: Icons.upload_file_outlined,
         title: 'No Excel file selected',
-        message: 'Tap Select Excel File to upload an .xlsx workbook from your phone storage.',
+        message:
+            'Tap Select Excel File to upload an .xlsx workbook from your phone storage.',
       );
     }
 
@@ -419,7 +528,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return _buildEmptyState(
         icon: Icons.table_chart_outlined,
         title: 'No sheets found',
-        message: 'This workbook opened successfully, but it does not contain any sheets to display.',
+        message:
+            'This workbook opened successfully, but it does not contain any sheets to display.',
       );
     }
 
@@ -432,29 +542,109 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final rows = _sheetRows;
     if (rows.isEmpty) {
       return _buildEmptyState(
         icon: Icons.table_rows_outlined,
         title: 'No rows to show',
-        message: 'This sheet has the required columns but no readable content rows.',
+        message:
+            'This sheet has the required columns but no readable content rows.',
       );
     }
+
+    final keywords = rows
+        .map((row) => row.keyword)
+        .where((keyword) => keyword.isNotEmpty)
+        .toSet()
+        .toList();
+    keywords.sort();
+
+    if (_selectedKeyword == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Keywords (${keywords.length})',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          ...keywords.map((keyword) => Card(
+                child: ListTile(
+                  title: Text(keyword),
+                  trailing:
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 18),
+                  onTap: () => _selectKeyword(keyword),
+                ),
+              )),
+        ],
+      );
+    }
+
+    final topics = rows
+        .where((row) => row.keyword == _selectedKeyword)
+        .map((row) => row.topic)
+        .where((topic) => topic.isNotEmpty)
+        .toSet()
+        .toList();
+    topics.sort();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Content (${rows.length})',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () {
+                setState(() {
+                  _selectedKeyword = null;
+                  _selectedTopic = null;
+                  _selectedRow = null;
+                });
+              },
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                'Topics for "$_selectedKeyword" (${topics.length})',
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
-        ...rows.map(_buildContentCard),
+        ...topics.map((topic) {
+          final isSelected = topic == _selectedTopic;
+          return Card(
+            color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+            child: ListTile(
+              title: Text(topic),
+              subtitle:
+                  isSelected ? const Text('Tap again to replay content') : null,
+              trailing: const Icon(Icons.play_arrow_rounded),
+              onTap: () => _selectTopic(topic),
+            ),
+          );
+        }),
+        if (_selectedTopic != null && _selectedTopicRows.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text(
+            'Content (${_selectedTopicRows.length})',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          ..._selectedTopicRows.map(_buildContentCard),
+        ],
       ],
     );
   }
 
   Widget _buildContentCard(ExcelRowData row) {
     final isSelected = identical(row, _selectedRow);
+    final cleanedContent = _cleanContent(row.content);
+    final displayContent =
+        cleanedContent.isEmpty ? row.content.trim() : cleanedContent;
 
     return Card(
       color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
@@ -467,12 +657,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 10),
             _buildLabelValue('Topic', row.topic),
             const SizedBox(height: 10),
-            _buildLabelValue('Content', row.content),
+            _buildLabelValue('Content', displayContent),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton.icon(
-                onPressed: row.content.trim().isEmpty ? null : () => _readRow(row),
+                onPressed: displayContent.isEmpty ? null : () => _readRow(row),
                 icon: const Icon(Icons.volume_up_rounded),
                 label: const Text('Read Aloud'),
               ),
@@ -481,6 +671,67 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  String _cleanContent(String content) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    if (!_isHtml(trimmed)) {
+      return trimmed;
+    }
+
+    var html = trimmed;
+    html = html.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+    html = html.replaceAll(
+        RegExp(r'<style[^>]*>.*?<\/style>', dotAll: true, caseSensitive: false),
+        '');
+    html = html.replaceAll(
+        RegExp(r'<script[^>]*>.*?<\/script>',
+            dotAll: true, caseSensitive: false),
+        '');
+    html = html.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+    html = html.replaceAll(
+        RegExp(
+            r'<\s*(?:p|div|section|article|header|footer|aside|nav|figure|figcaption|li|tr|td|th|h[1-6])[^>]*>',
+            caseSensitive: false),
+        '');
+    html = html.replaceAll(
+        RegExp(
+            r'<\s*\/\s*(?:p|div|section|article|header|footer|aside|nav|figure|figcaption|li|tr|td|th|h[1-6])\s*>',
+            caseSensitive: false),
+        '\n');
+    html = html.replaceAll(RegExp(r'<[^>]+>'), '');
+
+    var text = _decodeHtmlEntities(html);
+    text = text.replaceAll(RegExp(r'\s*\n\s*'), '\n');
+    text = text.replaceAll(RegExp(r'\n{2,}'), '\n\n');
+    text = text.replaceAll(RegExp(r'[ \t\u00A0]{2,}'), ' ');
+    return text.trim();
+  }
+
+  String _buildReadableContent(String content) {
+    final cleaned = _cleanContent(content);
+    return cleaned.isNotEmpty ? cleaned : content.trim();
+  }
+
+  String _decodeHtmlEntities(String input) {
+    return input
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'");
+  }
+
+  bool _isHtml(String content) {
+    return RegExp(
+      r'<\s*(html|body|div|span|p|br|strong|em|b|i|ul|ol|li|table|tr|td|th|header|footer|section|article|h[1-6])',
+      caseSensitive: false,
+    ).hasMatch(content);
   }
 
   Widget _buildLabelValue(String label, String value) {
@@ -497,9 +748,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 3),
-        Text(
-          value.isEmpty ? '—' : value,
-          style: const TextStyle(fontSize: 15, height: 1.35),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: Text(
+            value.isEmpty ? '—' : value,
+            style: const TextStyle(fontSize: 15, height: 1.35),
+          ),
         ),
       ],
     );

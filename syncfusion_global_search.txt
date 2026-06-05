@@ -1,0 +1,200 @@
+﻿C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\example\ddd03_2.dart:56://       var chunks = await loadFromUri(Uri.parse('http://127.0.0.1:5000'));
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\example\ddd04.dart:79://     //   var chunks = await loadFromUri(Uri.parse('http://127.0.0.1:5000'));
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:1636:ErrorsResultImpl _createErrorsResultFromBytes(
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:1642:events.GetErrorsFromBytes(file: file, library: library),
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:1801:var result = _createErrorsResultFromBytes(file, library, bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:1813:var result = _createErrorsResultFromBytes(file, library, bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:1911:var bundle = performance.run('readFromBytes', (performance) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:1916:return LibraryDiagnosticsBundle.fromBytes(bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:2171:var result = _createErrorsResultFromBytes(
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver.dart:2218:var result = _createErrorsResultFromBytes(file, library, bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver_event.dart:52:final class GetErrorsFromBytes extends AnalysisDriverEvent {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\driver_event.dart:56:GetErrorsFromBytes({required this.file, required this.library});
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\file_state.dart:826:var result = AnalysisDriverUnlinkedUnit.fromBytes(bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\library_context.dart:536:return _requirements ??= RequirementsManifest.fromBytes(requirementsBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\library_context.dart:549:var digest = RequirementsManifestDigest.fromBytes(digestBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\library_diagnostics.dart:32:factory LibraryDiagnosticsBundle.fromBytes(Uint8List bytes) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\library_diagnostics.dart:52:return _requirements ??= RequirementsManifest.fromBytes(requirementsBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\library_diagnostics.dart:66:var digest = RequirementsManifestDigest.fromBytes(digestBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\dart\analysis\unlinked_data.dart:36:factory AnalysisDriverUnlinkedUnit.fromBytes(Uint8List bytes) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\fine\library_manifest.dart:117:factory LibraryManifest.fromBytes(Uint8List bytes) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\fine\library_manifest.dart:872:var readManifest = LibraryManifest.fromBytes(bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\fine\library_manifest.dart:1672:return _instance ??= LibraryManifest.fromBytes(_bytes!);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\fine\requirements.dart:891:factory RequirementsManifest.fromBytes(Uint8List bytes) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\fine\requirements.dart:946:var readManifest = RequirementsManifest.fromBytes(bytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\fine\requirements.dart:2865:static RequirementsManifestDigest fromBytes(Uint8List bytes) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary\flat_buffers.dart:39:factory BufferContext.fromBytes(List<int> byteList) {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary\format.dart:174:fb.BufferContext rootRef = fb.BufferContext.fromBytes(buffer);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary\format.dart:471:fb.BufferContext rootRef = fb.BufferContext.fromBytes(buffer);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary\format.dart:1701:fb.BufferContext rootRef = fb.BufferContext.fromBytes(buffer);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary\format.dart:2169:fb.BufferContext rootRef = fb.BufferContext.fromBytes(buffer);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary2\informative_data.dart:51:_applyFromBytes(libraryFragment, infoBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\lib\src\summary2\informative_data.dart:58:void _applyFromBytes(
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:977:test_changeFile_notPriority_errorsFromBytes() async {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:1030:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:1049:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:1542:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:2732:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:3840:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:4953:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:5727:case driver_events.GetErrorsFromBytes():
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:5975:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:6338:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:7096:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:8078:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:8539:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:10776:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:11061:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:12190:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:12484:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:12581:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:12703:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:14322:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:14788:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:16047:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:16325:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:17177:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:17822:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:17935:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:18668:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:19211:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:19468:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:19723:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:19964:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:20196:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:20997:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:21328:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:21677:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:22000:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:22321:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:22636:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:23639:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:26893:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:27130:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:27405:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:27527:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:28195:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:29649:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:29894:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:30149:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:30462:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:30738:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:30872:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:31189:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:31620:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:31911:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:32200:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:32483:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:35449:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:35533:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:35794:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:36058:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:36230:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:36452:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:36630:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:36804:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:36974:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:37152:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:37320:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:37514:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:37682:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:38471:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:39083:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:40043:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:40644:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:40922:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:41161:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:41428:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:41685:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:41940:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:42048:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:42905:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98320:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98338:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98520:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98604:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98919:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98968:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:98983:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\driver_test.dart:99094:[operation] getErrorsFromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\result_printer.dart:920:case events.GetErrorsFromBytes():
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\analysis\result_printer.dart:921:sink.writelnWithIndent('[operation] getErrorsFromBytes');
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\micro\simple_file_resolver_test.dart:1831:test_nameOffset_class_method_fromBytes() async {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\dart\micro\simple_file_resolver_test.dart:1862:test_nameOffset_unit_variable_fromBytes() async {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\class_test.dart:14:defineReflectiveTests(ClassElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\class_test.dart:16:defineReflectiveTests(ClassElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\class_test.dart:34298:class ClassElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\class_test.dart:34312:class ClassElementTest_fromBytes extends ClassElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\const_test.dart:16:defineReflectiveTests(ConstElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\const_test.dart:10987:class ConstElementTest_fromBytes extends ConstElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\default_value_test.dart:13:defineReflectiveTests(DefaultValueElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\default_value_test.dart:1303:class DefaultValueElementTest_fromBytes extends DefaultValueElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\duplicate_declaration_test.dart:13:defineReflectiveTests(DuplicateDeclarationElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\duplicate_declaration_test.dart:1464:class DuplicateDeclarationElementTest_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\enum_test.dart:14:defineReflectiveTests(EnumElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\enum_test.dart:16:defineReflectiveTests(EnumElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\enum_test.dart:18544:class EnumElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\enum_test.dart:18558:class EnumElementTest_fromBytes extends EnumElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_test.dart:14:defineReflectiveTests(ExtensionElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_test.dart:16:defineReflectiveTests(ExtensionElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_test.dart:3158:class ExtensionElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_test.dart:3172:class ExtensionElementTest_fromBytes extends ExtensionElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_type_test.dart:14:defineReflectiveTests(ExtensionTypeElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_type_test.dart:16:defineReflectiveTests(ExtensionTypeElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_type_test.dart:12251:class ExtensionTypeElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\extension_type_test.dart:12265:class ExtensionTypeElementTest_fromBytes extends ExtensionTypeElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\formal_parameter_test.dart:13:defineReflectiveTests(FormalParameterElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\formal_parameter_test.dart:907:class FormalParameterElementTest_fromBytes extends FormalParameterElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\function_type_annotation_test.dart:13:defineReflectiveTests(FunctionTypeAnnotationElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\function_type_annotation_test.dart:1099:class FunctionTypeAnnotationElementTest_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_export_test.dart:14:defineReflectiveTests(LibraryExportElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_export_test.dart:1524:class LibraryExportElementTest_fromBytes extends LibraryExportElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_fragment_test.dart:20:defineReflectiveTests(LibraryFragmentElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_fragment_test.dart:1579:class LibraryFragmentElementTest_fromBytes extends LibraryFragmentElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_import_test.dart:15:defineReflectiveTests(LibraryImportElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_import_test.dart:1148:class LibraryImportElementTest_fromBytes extends LibraryImportElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_test.dart:13:defineReflectiveTests(LibraryElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\library_test.dart:125:class LibraryElementTest_fromBytes extends LibraryElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\local_declarations_test.dart:13:defineReflectiveTests(LocalDeclarationElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\local_declarations_test.dart:261:class LocalDeclarationElementTest_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\metadata_test.dart:14:defineReflectiveTests(MetadataElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\metadata_test.dart:7618:class MetadataElementTest_fromBytes extends MetadataElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\mixin_test.dart:14:defineReflectiveTests(MixinElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\mixin_test.dart:15:defineReflectiveTests(MixinElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\mixin_test.dart:5874:class MixinElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\mixin_test.dart:5888:class MixinElementTest_fromBytes extends MixinElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\non_synthetic_test.dart:13:defineReflectiveTests(NonSyntheticElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\non_synthetic_test.dart:640:class NonSyntheticElementTest_fromBytes extends NonSyntheticElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\offsets_test.dart:13:defineReflectiveTests(OffsetsElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\offsets_test.dart:3430:class OffsetsElementTest_fromBytes extends OffsetsElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\part_include_test.dart:13:defineReflectiveTests(PartIncludeElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\part_include_test.dart:605:class PartIncludeElementTest_fromBytes extends PartIncludeElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\record_type_test.dart:13:defineReflectiveTests(RecordTypeElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\record_type_test.dart:703:class RecordTypeElementTest_fromBytes extends RecordTypeElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\since_sdk_version_test.dart:17:defineReflectiveTests(SinceSdkVersionElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\since_sdk_version_test.dart:965:class SinceSdkVersionElementTest_fromBytes extends SinceSdkVersionElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_function_test.dart:14:defineReflectiveTests(TopLevelFunctionElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_function_test.dart:16:defineReflectiveTests(TopLevelFunctionElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_function_test.dart:2962:class TopLevelFunctionElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_function_test.dart:2976:class TopLevelFunctionElementTest_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_variable_test.dart:16:defineReflectiveTests(TopLevelVariableElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_variable_test.dart:18:defineReflectiveTests(TopLevelVariableElementTest_augmentation_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_variable_test.dart:4926:class TopLevelVariableElementTest_augmentation_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\top_level_variable_test.dart:4940:class TopLevelVariableElementTest_fromBytes
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\types_test.dart:15:defineReflectiveTests(TypesElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\types_test.dart:2972:class TypesElementTest_fromBytes extends TypesElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\type_alias_test.dart:13:defineReflectiveTests(TypeAliasElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\type_alias_test.dart:4538:class TypeAliasElementTest_fromBytes extends TypeAliasElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\type_inference_test.dart:16:defineReflectiveTests(TypeInferenceElementTest_fromBytes);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\elements\type_inference_test.dart:8297:class TypeInferenceElementTest_fromBytes extends TypeInferenceElementTest {
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:162:BufferContext buffer = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:219:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:249:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:274:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:294:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:332:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:346:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:377:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:398:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:419:BufferContext buf = BufferContext.fromBytes(byteList);
+C:\Users\rohan\AppData\Local\Pub\Cache\hosted\pub.dev\analyzer-10.0.1\test\src\summary\flat_buffers_test.dart:435:BufferContext buf = BufferContext.fromBytes(byteList);
