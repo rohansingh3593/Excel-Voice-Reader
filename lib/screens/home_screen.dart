@@ -16,8 +16,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   ExcelWorkbookData? _workbook;
   String? _selectedSheet;
-  String? _selectedKeyword;
-  String? _selectedTopic;
   ExcelRowData? _selectedRow;
   AccentOption _selectedAccent = TtsService.accents.first;
   SpeechSpeed _selectedSpeed = SpeechSpeed.normal;
@@ -33,17 +31,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return workbook.rowsBySheet[selectedSheet] ?? const [];
-  }
-
-  List<ExcelRowData> get _selectedTopicRows {
-    final sheetRows = _sheetRows;
-    if (_selectedKeyword == null || _selectedTopic == null) {
-      return const [];
-    }
-
-    return sheetRows.where((row) {
-      return row.keyword == _selectedKeyword && row.topic == _selectedTopic;
-    }).toList(growable: false);
   }
 
   String? get _selectedSheetError {
@@ -95,8 +82,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _workbook = workbook;
         _selectedSheet =
             workbook.sheetNames.isEmpty ? null : workbook.sheetNames.first;
-        _selectedKeyword = null;
-        _selectedTopic = null;
         _selectedRow = null;
       });
     } on FormatException catch (error) {
@@ -126,65 +111,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _selectKeyword(String keyword) {
-    setState(() {
-      _selectedKeyword = keyword;
-      _selectedTopic = null;
-      _selectedRow = null;
-    });
-  }
-
-  Future<void> _selectTopic(String topic) async {
-    debugPrint(
-        'DEBUG: _selectTopic called with topic=$topic, _selectedKeyword=$_selectedKeyword');
-    final rows = _sheetRows
-        .where((row) => row.keyword == _selectedKeyword && row.topic == topic)
-        .toList(growable: false);
-    debugPrint('DEBUG: Found ${rows.length} rows for this topic');
-    setState(() {
-      _selectedTopic = topic;
-      _selectedRow = rows.isNotEmpty ? rows.first : null;
-    });
-
-    if (rows.isEmpty) {
-      _showSnackBar('No content rows found for this topic.');
-      debugPrint('DEBUG: No rows found');
-      return;
-    }
-
-    final text =
-        rows.map((row) => _buildReadableContent(row.content)).join('\n\n');
-    debugPrint('DEBUG: Prepared text for speech (length=${text.length})');
-
-    if (text.trim().isEmpty) {
-      _showSnackBar('Selected topic has no readable content.');
-      debugPrint('DEBUG: Text is empty after cleaning');
-      return;
-    }
-
-    debugPrint('DEBUG: Calling _ttsService.speak()');
-    await _ttsService.speak(
-      text: text,
-      accent: _selectedAccent,
-      speed: _selectedSpeed,
-      pitch: _pitch,
-    );
-    debugPrint('DEBUG: speak() returned');
-  }
-
-  Future<void> _readRow(ExcelRowData row) async {
+  void _selectKeywordRow(ExcelRowData row) {
     setState(() {
       _selectedRow = row;
     });
+  }
 
-    final text = _buildReadableContent(row.content);
-    debugPrint('DEBUG: _readRow - prepared text (length=${text.length})');
-    if (text.trim().isEmpty) {
-      _showSnackBar('This row has no readable content to play.');
+  Future<void> _readSelectedContent() async {
+    final row = _selectedRow;
+    if (row == null) {
+      _showSnackBar('Select a keyword before using Read Aloud.');
       return;
     }
 
-    debugPrint('DEBUG: _readRow - calling speak()');
+    final text = _buildReadableContent(row.content);
+    if (text.trim().isEmpty) {
+      _showSnackBar('Selected keyword has no content to read.');
+      return;
+    }
+
     await _ttsService.speak(
       text: text,
       accent: _selectedAccent,
@@ -196,11 +141,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _playSelectedRow() async {
     final row = _selectedRow;
     if (row == null) {
-      _showSnackBar('Select a row or tap Read Aloud first.');
+      _showSnackBar('Select a keyword before using Read Aloud.');
       return;
     }
 
-    await _readRow(row);
+    await _readSelectedContent();
   }
 
   Future<void> _pauseSpeech() async {
@@ -239,9 +184,9 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildHeader(theme),
             const SizedBox(height: 16),
             _buildFileControls(),
-            if (_errorMessage != null) ...[
+            if (_errorMessage case final errorMessage?) ...[
               const SizedBox(height: 12),
-              _buildErrorBanner(_errorMessage!),
+              _buildErrorBanner(errorMessage),
             ],
             const SizedBox(height: 14),
             _buildDropdowns(),
@@ -461,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 FilledButton.tonalIcon(
                   onPressed: _selectedRow == null ? null : _playSelectedRow,
                   icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Play'),
+                  label: const Text('Read Aloud'),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _pauseSpeech,
@@ -550,11 +495,20 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final selectedSheet = _selectedSheet;
+    if (selectedSheet == null || !workbook.sheetNames.contains(selectedSheet)) {
+      return _buildEmptyState(
+        icon: Icons.table_chart_outlined,
+        title: 'Select a sheet',
+        message: 'Choose a sheet from the dropdown to load its keyword rows.',
+      );
+    }
+
     final sheetError = _selectedSheetError;
     if (sheetError != null) {
       return _buildEmptyState(
         icon: Icons.error_outline,
-        title: 'Required columns missing',
+        title: 'Sheet cannot be read',
         message: sheetError,
       );
     }
@@ -565,95 +519,44 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icons.table_rows_outlined,
         title: 'No rows to show',
         message:
-            'This sheet has the required columns but no readable content rows.',
+            'This sheet has the required columns but no readable keyword rows.',
       );
     }
-
-    final keywords = rows
-        .map((row) => row.keyword)
-        .where((keyword) => keyword.isNotEmpty)
-        .toSet()
-        .toList();
-    keywords.sort();
-
-    if (_selectedKeyword == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Keywords (${keywords.length})',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          ...keywords.map((keyword) => Card(
-                child: ListTile(
-                  title: Text(keyword),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 18),
-                  onTap: () => _selectKeyword(keyword),
-                ),
-              )),
-        ],
-      );
-    }
-
-    final topics = rows
-        .where((row) => row.keyword == _selectedKeyword)
-        .map((row) => row.topic)
-        .where((topic) => topic.isNotEmpty)
-        .toSet()
-        .toList();
-    topics.sort();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
-              onPressed: () {
-                setState(() {
-                  _selectedKeyword = null;
-                  _selectedTopic = null;
-                  _selectedRow = null;
-                });
-              },
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                'Topics for "$_selectedKeyword" (${topics.length})',
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-            ),
-          ],
+        Text(
+          'Keywords (${rows.length})',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
-        ...topics.map((topic) {
-          final isSelected = topic == _selectedTopic;
-          return Card(
-            color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
-            child: ListTile(
-              title: Text(topic),
-              subtitle:
-                  isSelected ? const Text('Tap again to replay content') : null,
-              trailing: const Icon(Icons.play_arrow_rounded),
-              onTap: () => _selectTopic(topic),
-            ),
-          );
-        }),
-        if (_selectedTopic != null && _selectedTopicRows.isNotEmpty) ...[
+        ...rows.map(_buildKeywordCard),
+        if (_selectedRow case final selectedRow?) ...[
           const SizedBox(height: 18),
-          Text(
-            'Content (${_selectedTopicRows.length})',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          const Text(
+            'Selected Content',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
-          ..._selectedTopicRows.map(_buildContentCard),
+          _buildContentCard(selectedRow),
         ],
       ],
+    );
+  }
+
+  Widget _buildKeywordCard(ExcelRowData row) {
+    final isSelected = identical(row, _selectedRow);
+    final topic = row.topic.trim();
+
+    return Card(
+      color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+      child: ListTile(
+        title: Text(row.keyword),
+        subtitle: topic.isEmpty ? const Text('No topic provided') : Text(topic),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 18),
+        onTap: () => _selectKeywordRow(row),
+      ),
     );
   }
 
@@ -679,7 +582,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: FilledButton.icon(
-                onPressed: displayContent.isEmpty ? null : () => _readRow(row),
+                onPressed: displayContent.isEmpty ? null : _readSelectedContent,
                 icon: const Icon(Icons.volume_up_rounded),
                 label: const Text('Read Aloud'),
               ),
