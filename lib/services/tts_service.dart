@@ -41,10 +41,10 @@ class TtsService {
   }
 
   static const List<AccentOption> accents = [
-    AccentOption(label: 'English US', languageCode: 'en-US'),
-    AccentOption(label: 'English India', languageCode: 'en-IN'),
-    AccentOption(label: 'English UK', languageCode: 'en-GB'),
-    AccentOption(label: 'English Australia', languageCode: 'en-AU'),
+    AccentOption(label: 'English India (en-IN)', languageCode: 'en-IN'),
+    AccentOption(label: 'English US (en-US)', languageCode: 'en-US'),
+    AccentOption(label: 'English UK (en-GB)', languageCode: 'en-GB'),
+    AccentOption(label: 'English Australia (en-AU)', languageCode: 'en-AU'),
   ];
 
   static const int _speechChunkSize = 3500;
@@ -113,8 +113,9 @@ class TtsService {
   /// Resume playback. On Windows this re-enqueues the paused item (best-effort).
   Future<void> resume() async {
     if (Platform.isWindows) {
-      if (_pausedItem != null) {
-        _queue.insert(0, _pausedItem!);
+      final pausedItem = _pausedItem;
+      if (pausedItem != null) {
+        _queue.insert(0, pausedItem);
         _pausedItem = null;
         queueLength.value = _queue.length;
         unawaited(_processQueue());

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 class ExcelRowData {
   const ExcelRowData({
@@ -33,17 +34,7 @@ class ExcelWorkbookData {
 class ExcelService {
   const ExcelService();
 
-  static const List<String> _requiredColumns = ['keyword', 'topic'];
-  static const Map<String, String> _headerAliases = {
-    'keyword': 'keyword',
-    'key word': 'keyword',
-    'topic': 'topic',
-    'subject': 'topic',
-    'content': 'content',
-    'description': 'content',
-    'text': 'content',
-    'message': 'content',
-  };
+  static const List<String> _requiredColumns = ['keyword', 'topic', 'content'];
 
   Future<ExcelWorkbookData?> pickAndReadWorkbook() async {
     final result = await FilePicker.platform.pickFiles(
@@ -59,7 +50,8 @@ class ExcelService {
     final pickedFile = result.files.first;
     if (!_isXlsxFile(pickedFile)) {
       throw const FormatException(
-          'Please choose a valid Excel file ending with .xlsx or .xlsm.');
+        'Please choose a valid Excel file ending with .xlsx or .xlsm.',
+      );
     }
 
     final bytes = await _readPickedFile(pickedFile);
@@ -75,38 +67,76 @@ class ExcelService {
       );
     }
 
-    final SpreadsheetDecoder workbook;
+    final SpreadsheetDecoder decodedWorkbook;
     try {
-      workbook = SpreadsheetDecoder.decodeBytes(bytes);
+      decodedWorkbook = SpreadsheetDecoder.decodeBytes(bytes);
     } catch (error) {
       throw FormatException(
-        'Unable to open this Excel file. ${error.runtimeType}: ${error.toString()}',
+        'Unable to open this Excel file. Please choose a valid .xlsx or .xlsm workbook.',
       );
     }
 
-    final sheetNames = workbook.tables.keys.toList(growable: false);
-    final rowsBySheet = <String, List<ExcelRowData>>{};
-    final sheetErrors = <String, String>{};
+    final sheetNames = decodedWorkbook.tables.keys.toList(growable: false);
+    if (sheetNames.isEmpty) {
+      throw const FormatException(
+        'This Excel file is empty. Please choose a workbook with at least one sheet.',
+      );
+    }
 
-    for (final sheetName in sheetNames) {
-      final sheet = workbook.tables[sheetName];
-      if (sheet == null) {
-        continue;
+    final xlsioWorkbook = _buildSyncfusionWorkbook(decodedWorkbook, sheetNames);
+    try {
+      final rowsBySheet = <String, List<ExcelRowData>>{};
+      final sheetErrors = <String, String>{};
+
+      for (var index = 0; index < sheetNames.length; index++) {
+        final sheetName = sheetNames[index];
+        final worksheet = xlsioWorkbook.worksheets[index];
+        try {
+          rowsBySheet[sheetName] = _readSheetRows(worksheet);
+        } on FormatException catch (error) {
+          sheetErrors[sheetName] = error.message;
+        }
       }
 
-      try {
-        rowsBySheet[sheetName] = _readSheetRows(sheet.rows);
-      } on FormatException catch (error) {
-        sheetErrors[sheetName] = error.message;
+      return ExcelWorkbookData(
+        fileName: pickedFile.name,
+        sheetNames: sheetNames,
+        rowsBySheet: rowsBySheet,
+        sheetErrors: sheetErrors,
+      );
+    } finally {
+      xlsioWorkbook.dispose();
+    }
+  }
+
+  xlsio.Workbook _buildSyncfusionWorkbook(
+    SpreadsheetDecoder decodedWorkbook,
+    List<String> sheetNames,
+  ) {
+    final workbook = xlsio.Workbook(sheetNames.length);
+
+    for (var sheetIndex = 0; sheetIndex < sheetNames.length; sheetIndex++) {
+      final sheetName = sheetNames[sheetIndex];
+      final worksheet = workbook.worksheets[sheetIndex];
+      worksheet.name = sheetName;
+
+      final decodedTable = decodedWorkbook.tables[sheetName];
+      final decodedRows = decodedTable?.rows ?? const <List<dynamic>>[];
+      for (var rowIndex = 0; rowIndex < decodedRows.length; rowIndex++) {
+        final row = decodedRows[rowIndex];
+        for (var columnIndex = 0; columnIndex < row.length; columnIndex++) {
+          final cellValue = row[columnIndex];
+          if (cellValue == null) {
+            continue;
+          }
+          worksheet
+              .getRangeByIndex(rowIndex + 1, columnIndex + 1)
+              .setValue(cellValue);
+        }
       }
     }
 
-    return ExcelWorkbookData(
-      fileName: pickedFile.name,
-      sheetNames: sheetNames,
-      rowsBySheet: rowsBySheet,
-      sheetErrors: sheetErrors,
-    );
+    return workbook;
   }
 
   bool _isXlsxFile(PlatformFile pickedFile) {
@@ -148,23 +178,39 @@ class ExcelService {
         bytes[3] == 0x04;
   }
 
-  List<ExcelRowData> _readSheetRows(List<List> rows) {
-    final headerIndex = rows.indexWhere((row) {
-      return row
-          .map((cell) => _normalizeHeader(_cellText(cell)))
-          .any(_requiredColumns.contains);
-    });
-    if (headerIndex == -1) {
-      return const [];
+  List<ExcelRowData> _readSheetRows(xlsio.Worksheet worksheet) {
+    final firstRow = worksheet.getFirstRow();
+    final lastRow = worksheet.getLastRow();
+    final firstColumn = worksheet.getFirstColumn();
+    final lastColumn = worksheet.getLastColumn();
+
+    if (firstRow <= 0 || lastRow <= 0 || firstColumn <= 0 || lastColumn <= 0) {
+      throw const FormatException(
+        'This sheet is empty. Please select a sheet that contains keyword, topic, and content columns.',
+      );
+    }
+
+    final headerRow = _findHeaderRow(
+      worksheet,
+      firstRow,
+      lastRow,
+      firstColumn,
+      lastColumn,
+    );
+    if (headerRow == null) {
+      throw const FormatException(
+        'Could not find a header row. Expected columns named keyword, topic, and content.',
+      );
     }
 
     final headers = <String, int>{};
-    for (var index = 0; index < rows[headerIndex].length; index++) {
+    for (var column = firstColumn; column <= lastColumn; column++) {
       final normalizedHeader = _normalizeHeader(
-        _cellText(rows[headerIndex][index]),
+        _cellText(worksheet, headerRow, column),
       );
-      if (normalizedHeader.isNotEmpty) {
-        headers[normalizedHeader] = index;
+      if (normalizedHeader.isNotEmpty &&
+          !headers.containsKey(normalizedHeader)) {
+        headers[normalizedHeader] = column;
       }
     }
 
@@ -173,80 +219,91 @@ class ExcelService {
         .toList(growable: false);
     if (missingColumns.isNotEmpty) {
       throw FormatException(
-        'Missing required column(s): ${missingColumns.join(', ')}. Expected keyword and topic.',
+        'Missing required column(s): ${missingColumns.join(', ')}. Expected keyword, topic, and content headers.',
       );
     }
 
-    final keywordIndex = headers['keyword']!;
-    final topicIndex = headers['topic']!;
-
-    final contentIndices = <int>[];
-    if (headers.containsKey('content')) {
-      contentIndices.add(headers['content']!);
-    } else {
-      contentIndices.addAll(headers.entries
-          .where((entry) => _isContentLikeHeader(entry.key))
-          .map((entry) => entry.value));
-    }
-
-    if (contentIndices.isEmpty) {
+    final keywordIndex = headers['keyword'];
+    final topicIndex = headers['topic'];
+    final contentIndex = headers['content'];
+    if (keywordIndex == null || topicIndex == null || contentIndex == null) {
       throw const FormatException(
-        'Missing required content column. Expected content, description, text, message, or a value-style column like file1_value.',
+        'Missing required column(s). Expected keyword, topic, and content headers.',
       );
     }
 
     final parsedRows = <ExcelRowData>[];
-    for (final row in rows.skip(headerIndex + 1)) {
-      final keyword = _valueForColumn(row, keywordIndex);
-      final topic = _valueForColumn(row, topicIndex);
-      final content = contentIndices
-          .map((index) => _valueForColumn(row, index))
-          .where((value) => value.isNotEmpty)
-          .join(' | ');
+    for (var rowIndex = headerRow + 1; rowIndex <= lastRow; rowIndex++) {
+      final keyword = _cellText(worksheet, rowIndex, keywordIndex);
+      final topic = _cellText(worksheet, rowIndex, topicIndex);
+      final content = _cellText(worksheet, rowIndex, contentIndex);
 
       if (keyword.isEmpty && topic.isEmpty && content.isEmpty) {
         continue;
       }
 
-      parsedRows.add(
-        ExcelRowData(keyword: keyword, topic: topic, content: content),
+      if (keyword.isEmpty) {
+        continue;
+      }
+
+      parsedRows.add(ExcelRowData(
+        keyword: keyword,
+        topic: topic,
+        content: content,
+      ));
+    }
+
+    if (parsedRows.isEmpty) {
+      throw const FormatException(
+        'This sheet has the required columns, but no keyword rows were found.',
       );
     }
 
     return parsedRows;
   }
 
-  String _valueForColumn(List row, int columnIndex) {
-    if (columnIndex >= row.length) {
+  int? _findHeaderRow(
+    xlsio.Worksheet worksheet,
+    int firstRow,
+    int lastRow,
+    int firstColumn,
+    int lastColumn,
+  ) {
+    for (var row = firstRow; row <= lastRow; row++) {
+      final headersInRow = <String>{};
+      for (var column = firstColumn; column <= lastColumn; column++) {
+        final normalizedHeader = _normalizeHeader(
+          _cellText(worksheet, row, column),
+        );
+        if (normalizedHeader.isNotEmpty) {
+          headersInRow.add(normalizedHeader);
+        }
+      }
+
+      if (_requiredColumns.every(headersInRow.contains)) {
+        return row;
+      }
+    }
+
+    return null;
+  }
+
+  String _cellText(xlsio.Worksheet worksheet, int row, int column) {
+    final range = worksheet.getRangeByIndex(row, column);
+    final displayText = range.displayText.trim();
+    if (displayText.isNotEmpty) {
+      return displayText;
+    }
+
+    final value = range.value;
+    if (value == null) {
       return '';
     }
 
-    return _cellText(row[columnIndex]).trim();
-  }
-
-  String _cellText(dynamic cell) {
-    if (cell == null) {
-      return '';
-    }
-
-    return cell.toString();
-  }
-
-  bool _isContentLikeHeader(String normalizedHeader) {
-    return normalizedHeader == 'content' ||
-        normalizedHeader.contains('value') ||
-        normalizedHeader.contains('file') ||
-        normalizedHeader.contains('text');
+    return value.toString().trim();
   }
 
   String _normalizeHeader(String value) {
-    var cleaned = value.replaceAll(
-      RegExp(r'[\u0000-\u001F\u007F\u00A0\uFEFF]'),
-      ' ',
-    );
-    cleaned = cleaned.toLowerCase().trim();
-    cleaned = cleaned.replaceAll(RegExp(r'[^a-z0-9 ]'), ' ');
-    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ');
-    return _headerAliases[cleaned] ?? cleaned;
+    return value.trim().toLowerCase();
   }
 }

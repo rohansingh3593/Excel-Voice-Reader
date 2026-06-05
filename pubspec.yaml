@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  sdk: '>=3.7.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -12,6 +12,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   file_picker: ^8.1.7
   spreadsheet_decoder: ^2.3.0
+  syncfusion_flutter_xlsio: ^33.2.10
   # Uses the no-Windows fork so Windows builds do not require nuget.exe.
   # Windows speech is handled by lib/services/tts_service.dart via PowerShell SAPI.
   flutter_tts_no_windows: ^1.0.0
