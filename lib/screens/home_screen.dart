@@ -19,6 +19,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _selectedKeyword;
   String? _selectedTopic;
   ExcelRowData? _selectedRow;
+  List<ExcelRowData> _displayedSheetRows = const <ExcelRowData>[];
+  String? _loadedSheet;
   AccentOption _selectedAccent = TtsService.accents.first;
   SpeechSpeed _selectedSpeed = SpeechSpeed.normal;
   double _pitch = 1.0;
@@ -32,7 +34,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return const [];
     }
 
-    return workbook.rowsBySheet[selectedSheet] ?? const [];
+    if (_loadedSheet != selectedSheet) {
+      return const <ExcelRowData>[];
+    }
+
+    return _displayedSheetRows;
   }
 
   List<ExcelRowData> get _selectedTopicRows {
@@ -91,19 +97,17 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
+      final initialSheet =
+          workbook.sheetNames.isEmpty ? null : workbook.sheetNames.first;
       setState(() {
         _workbook = workbook;
-        _selectedSheet =
-            workbook.sheetNames.isEmpty ? null : workbook.sheetNames.first;
-        _selectedKeyword = null;
-        _selectedTopic = null;
-        _selectedRow = null;
+        _clearSelectedSheetState(initialSheet);
       });
+      _reloadSelectedSheetRows(initialSheet);
     } on FormatException catch (error) {
       setState(() {
         _workbook = null;
-        _selectedSheet = null;
-        _selectedRow = null;
+        _clearSelectedSheetState(null);
         _errorMessage = error.message;
       });
     } catch (error) {
@@ -112,8 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
           : 'Unable to open this Excel file. Please choose a valid .xlsx or .xlsm file.';
       setState(() {
         _workbook = null;
-        _selectedSheet = null;
-        _selectedRow = null;
+        _clearSelectedSheetState(null);
         _errorMessage = message;
       });
       debugPrint('Excel load error: $error');
@@ -124,6 +127,42 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  void _clearSelectedSheetState(String? sheetName) {
+    _selectedSheet = sheetName;
+    _selectedKeyword = null;
+    _selectedTopic = null;
+    _selectedRow = null;
+    _displayedSheetRows = const <ExcelRowData>[];
+    _loadedSheet = null;
+  }
+
+  void _selectSheet(String? sheetName) {
+    setState(() {
+      _clearSelectedSheetState(sheetName);
+    });
+    _reloadSelectedSheetRows(sheetName);
+  }
+
+  void _reloadSelectedSheetRows(String? sheetName) {
+    final workbook = _workbook;
+    if (workbook == null || sheetName == null) {
+      return;
+    }
+
+    final rows = List<ExcelRowData>.unmodifiable(
+      workbook.rowsBySheet[sheetName] ?? const <ExcelRowData>[],
+    );
+
+    if (!mounted || _selectedSheet != sheetName) {
+      return;
+    }
+
+    setState(() {
+      _displayedSheetRows = rows;
+      _loadedSheet = sheetName;
+    });
   }
 
   void _selectKeyword(String keyword) {
@@ -379,14 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                       .toList() ??
                   const [],
-              onChanged: workbook == null
-                  ? null
-                  : (sheetName) {
-                      setState(() {
-                        _selectedSheet = sheetName;
-                        _selectedRow = null;
-                      });
-                    },
+              onChanged: workbook == null ? null : _selectSheet,
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<AccentOption>(
