@@ -19,6 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _selectedKeyword;
   String? _selectedTopic;
   ExcelRowData? _selectedRow;
+  int _topicPlaybackRequestId = 0;
   List<ExcelRowData> _displayedSheetRows = const <ExcelRowData>[];
   String? _loadedSheet;
   AccentOption _selectedAccent = TtsService.accents.first;
@@ -130,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _clearSelectedSheetState(String? sheetName) {
+    _topicPlaybackRequestId++;
     _selectedSheet = sheetName;
     _selectedKeyword = null;
     _selectedTopic = null;
@@ -167,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _selectKeyword(String keyword) {
     setState(() {
+      _topicPlaybackRequestId++;
       _selectedKeyword = keyword;
       _selectedTopic = null;
       _selectedRow = null;
@@ -174,8 +177,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _selectTopic(String topic) async {
+    final playbackRequestId = ++_topicPlaybackRequestId;
     debugPrint(
         'DEBUG: _selectTopic called with topic=$topic, _selectedKeyword=$_selectedKeyword');
+
+    await _ttsService.stop();
+    _ttsService.clearQueue();
+
+    if (!mounted || playbackRequestId != _topicPlaybackRequestId) {
+      return;
+    }
+
     final rows = _sheetRows
         .where((row) => row.keyword == _selectedKeyword && row.topic == topic)
         .toList(growable: false);
@@ -198,6 +210,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.trim().isEmpty) {
       _showSnackBar('Selected topic has no readable content.');
       debugPrint('DEBUG: Text is empty after cleaning');
+      return;
+    }
+
+    if (!mounted || playbackRequestId != _topicPlaybackRequestId) {
       return;
     }
 

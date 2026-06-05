@@ -152,6 +152,7 @@ class TtsService {
     _speechGeneration++;
     _queue.clear();
     queueLength.value = 0;
+    _currentItem = null;
     _pausedItem = null;
     if (Platform.isWindows) {
       try {
