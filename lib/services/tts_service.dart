@@ -259,6 +259,7 @@ class TtsService {
             speed: item.speed,
             pitch: item.pitch,
             voiceStyle: item.voiceStyle,
+            generation: _speechGeneration,
           );
         } else {
           await _speakWithPlatformTts(
@@ -552,6 +553,7 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required int generation,
   }) async {
     debugPrint(
         '_speakWithWindowsSapi starting (text length=${text.length}, accent=${accent.label})');
@@ -606,6 +608,12 @@ class TtsService {
         );
       }
 
+      if (generation != _speechGeneration) {
+        process.kill();
+        debugPrint('_speakWithWindowsSapi cancelled before playback');
+        return;
+      }
+
       // ignore: avoid_print
       print('Speech Rate: ${speed.rate}');
       // ignore: avoid_print
@@ -616,11 +624,20 @@ class TtsService {
       final exitCode = await process.exitCode;
       final stdoutStr = await stdoutFuture;
       final stderrStr = await stderrFuture;
-      _windowsProcess = null;
+      if (identical(_windowsProcess, process)) {
+        _windowsProcess = null;
+      }
 
       if (exitCode != 0) {
-        debugPrint('Windows TTS exited with code $exitCode: $stderrStr');
+        if (generation != _speechGeneration || exitCode == -1) {
+          debugPrint('Windows TTS playback was stopped.');
+        } else {
+          debugPrint('Windows TTS exited with code $exitCode: $stderrStr');
+        }
       } else {
+        if (stdoutStr.trim().isNotEmpty) {
+          debugPrint('Windows TTS output: $stdoutStr');
+        }
         debugPrint('Windows TTS completed successfully');
       }
     } catch (e, stack) {
@@ -648,20 +665,39 @@ class TtsService {
     final preferredGender = _windowsGenderFilterFor(voiceStyle);
 
     return '''
-Add-Type -AssemblyName System.Speech;
-\$rawText = Get-Content -Raw -LiteralPath '$escapedTextFilePath';
-\$escapedText = [System.Security.SecurityElement]::Escape(\$rawText);
-\$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-\$speaker.Volume = 100;
-\$speaker.Rate = $windowsRate;
-\$voices = \$speaker.GetInstalledVoices() | Where-Object { \$_.VoiceInfo.Culture.Name -eq '$escapedLanguage' };
-\$voice = \$null;
-if ('$preferredGender' -ne '') { \$voice = \$voices | Where-Object { \$_.VoiceInfo.Gender.ToString() -eq '$preferredGender' } | Select-Object -First 1; }
-if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
-if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
-\$ssml = "<speak version='1.0' xml:lang='$escapedLanguage' xmlns='http://www.w3.org/2001/10/synthesis'><prosody pitch='$windowsPitch%'>\$escapedText</prosody></speak>";
-\$speaker.SpeakSsml(\$ssml);
-\$speaker.Dispose();
+\$ErrorActionPreference = 'Stop';
+\$speaker = \$null;
+try {
+  Add-Type -AssemblyName System.Speech;
+  \$rawText = Get-Content -Raw -LiteralPath '$escapedTextFilePath';
+  \$escapedText = [System.Security.SecurityElement]::Escape(\$rawText);
+  \$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+  \$speaker.Volume = 100;
+  \$speaker.Rate = $windowsRate;
+  \$requestedCulture = '$escapedLanguage';
+  \$neutralCulture = (\$requestedCulture -split '-')[0];
+  \$voices = \$speaker.GetInstalledVoices() | Where-Object { \$_.Enabled -and \$_.VoiceInfo.Culture.Name -eq \$requestedCulture };
+  if (-not \$voices) { \$voices = \$speaker.GetInstalledVoices() | Where-Object { \$_.Enabled -and \$_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq \$neutralCulture }; }
+  \$voice = \$null;
+  if ('$preferredGender' -ne '') { \$voice = \$voices | Where-Object { \$_.VoiceInfo.Gender.ToString() -eq '$preferredGender' } | Select-Object -First 1; }
+  if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
+  if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
+  \$spokenCulture = \$speaker.Voice.Culture.Name;
+  \$pitch = $windowsPitch;
+  \$pitchValue = if (\$pitch -gt 0) { "+\$pitch%" } elseif (\$pitch -lt 0) { "\$pitch%" } else { 'default' };
+  \$ssml = "<speak version='1.0' xml:lang='\$spokenCulture' xmlns='http://www.w3.org/2001/10/synthesis'><prosody pitch='\$pitchValue'>\$escapedText</prosody></speak>";
+  try {
+    \$speaker.SpeakSsml(\$ssml);
+  } catch {
+    Write-Output "SSML playback failed; falling back to plain SAPI speech. \$(\$_.Exception.Message)";
+    \$speaker.Speak(\$rawText);
+  }
+} catch {
+  Write-Error \$_.Exception.Message;
+  exit 1;
+} finally {
+  if (\$speaker -ne \$null) { \$speaker.Dispose(); }
+}
 ''';
   }
 
