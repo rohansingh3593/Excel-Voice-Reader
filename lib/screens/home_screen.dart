@@ -26,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _loadedSheet;
   AccentOption _selectedAccent = TtsService.accents.first;
   SpeechSpeed _selectedSpeed = SpeechSpeed.normal;
+  VoiceStyle _selectedVoiceStyle = VoiceStyle.defaultVoice;
   double _pitch = 1.0;
   bool _isLoading = false;
   String? _errorMessage;
@@ -225,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
       accent: _selectedAccent,
       speed: _selectedSpeed,
       pitch: _pitch,
+      voiceStyle: _selectedVoiceStyle,
     );
     debugPrint('DEBUG: speak() returned');
   }
@@ -254,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
       accent: _selectedAccent,
       speed: _selectedSpeed,
       pitch: _pitch,
+      voiceStyle: _selectedVoiceStyle,
     );
   }
 
@@ -272,6 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
       accent: _selectedAccent,
       speed: _selectedSpeed,
       pitch: _pitch,
+      voiceStyle: _selectedVoiceStyle,
     );
   }
 
@@ -296,6 +300,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void _changeSpeed(SpeechSpeed speed) {
     setState(() {
       _selectedSpeed = speed;
+    });
+    _restartPlaybackIfActive();
+  }
+
+  void _changeVoiceStyle(VoiceStyle voiceStyle) {
+    setState(() {
+      _selectedVoiceStyle = voiceStyle;
     });
     _restartPlaybackIfActive();
   }
@@ -510,6 +521,30 @@ class _HomeScreenState extends State<HomeScreen> {
                   _selectedAccent = accent;
                 });
                 _restartPlaybackIfActive();
+              },
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<VoiceStyle>(
+              initialValue: _selectedVoiceStyle,
+              decoration: const InputDecoration(
+                labelText: 'Voice Style',
+                prefixIcon: Icon(Icons.voice_chat_outlined),
+                border: OutlineInputBorder(),
+              ),
+              items: VoiceStyle.values
+                  .map(
+                    (voiceStyle) => DropdownMenuItem(
+                      value: voiceStyle,
+                      child: Text(voiceStyle.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (voiceStyle) {
+                if (voiceStyle == null) {
+                  return;
+                }
+
+                _changeVoiceStyle(voiceStyle);
               },
             ),
           ],

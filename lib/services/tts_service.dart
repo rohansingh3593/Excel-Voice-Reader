@@ -21,18 +21,29 @@ enum SpeechSpeed {
   final double rate;
 }
 
+enum VoiceStyle {
+  femaleSmooth('Female Smooth'),
+  male('Male'),
+  defaultVoice('Default');
+
+  const VoiceStyle(this.label);
+  final String label;
+}
+
 class _TtsQueueItem {
   _TtsQueueItem({
     required this.text,
     required this.accent,
     required this.speed,
     required this.pitch,
+    required this.voiceStyle,
   });
 
   final String text;
   AccentOption accent;
   SpeechSpeed speed;
   double pitch;
+  VoiceStyle voiceStyle;
 }
 
 class TtsService {
@@ -67,6 +78,7 @@ class TtsService {
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -80,6 +92,7 @@ class TtsService {
       accent: accent,
       speed: speed,
       pitch: pitch,
+      voiceStyle: voiceStyle,
     ));
     queueLength.value = _queue.length;
     debugPrint('TtsService.speak() queue length now ${_queue.length}');
@@ -92,18 +105,21 @@ class TtsService {
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
   }) {
     _applySettingsToItem(
       _currentItem,
       accent: accent,
       speed: speed,
       pitch: pitch,
+      voiceStyle: voiceStyle,
     );
     _applySettingsToItem(
       _pausedItem,
       accent: accent,
       speed: speed,
       pitch: pitch,
+      voiceStyle: voiceStyle,
     );
     for (final item in _queue) {
       _applySettingsToItem(
@@ -111,6 +127,7 @@ class TtsService {
         accent: accent,
         speed: speed,
         pitch: pitch,
+        voiceStyle: voiceStyle,
       );
     }
   }
@@ -120,6 +137,7 @@ class TtsService {
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
   }) {
     if (item == null) {
       return;
@@ -128,6 +146,7 @@ class TtsService {
     item.accent = accent;
     item.speed = speed;
     item.pitch = pitch;
+    item.voiceStyle = voiceStyle;
   }
 
   /// Pause current speech. On Windows this kills the process and stores
@@ -239,6 +258,7 @@ class TtsService {
             accent: item.accent,
             speed: item.speed,
             pitch: item.pitch,
+            voiceStyle: item.voiceStyle,
           );
         } else {
           await _speakWithPlatformTts(
@@ -301,7 +321,6 @@ class TtsService {
     required int generation,
   }) async {
     await _configuration;
-    await _setLanguageWithFallback(item.accent.languageCode);
     await _tts.setVolume(1.0);
 
     final chunks = _splitTextForSpeech(item.text);
@@ -326,6 +345,11 @@ class TtsService {
       print('Speech Rate: $speechRate');
       // ignore: avoid_print
       print('Speech Pitch: $speechPitch');
+      await _setLanguageWithFallback(item.accent.languageCode);
+      await _applyVoiceForStyle(
+        languageCode: item.accent.languageCode,
+        voiceStyle: item.voiceStyle,
+      );
       await _tts.setSpeechRate(speechRate);
       await _tts.setPitch(speechPitch);
       final result = await _tts.speak(chunk);
@@ -404,11 +428,130 @@ class TtsService {
     debugPrint('TtsService: using default system voice');
   }
 
+  Future<void> _applyVoiceForStyle({
+    required String languageCode,
+    required VoiceStyle voiceStyle,
+  }) async {
+    final selectedVoice = await _selectVoiceForStyle(
+      languageCode: languageCode,
+      voiceStyle: voiceStyle,
+    );
+    if (selectedVoice == null) {
+      debugPrint(
+        'TtsService: no ${voiceStyle.label} voice found for $languageCode; using default voice',
+      );
+      return;
+    }
+
+    try {
+      await _tts.setVoice(selectedVoice);
+      debugPrint('TtsService: selected voice ${selectedVoice['name']}');
+    } catch (error) {
+      debugPrint('TtsService: failed to set voice $selectedVoice: $error');
+    }
+  }
+
+  Future<Map<String, String>?> _selectVoiceForStyle({
+    required String languageCode,
+    required VoiceStyle voiceStyle,
+  }) async {
+    final dynamic voices;
+    try {
+      voices = await _tts.getVoices;
+    } catch (error) {
+      debugPrint('TtsService: failed to load voices: $error');
+      return null;
+    }
+
+    if (voices is! Iterable) {
+      return null;
+    }
+
+    final languageVoices = voices
+        .whereType<Map>()
+        .map(_stringVoiceMap)
+        .where((voice) => _voiceMatchesLanguage(voice, languageCode))
+        .toList(growable: false);
+    if (languageVoices.isEmpty) {
+      return null;
+    }
+
+    return switch (voiceStyle) {
+      VoiceStyle.femaleSmooth => _preferredFemaleVoice(languageVoices),
+      VoiceStyle.male => _preferredMaleVoice(languageVoices),
+      VoiceStyle.defaultVoice => languageVoices.first,
+    };
+  }
+
+  Map<String, String> _stringVoiceMap(Map voice) {
+    return voice.map(
+      (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
+    );
+  }
+
+  bool _voiceMatchesLanguage(Map<String, String> voice, String languageCode) {
+    final locale = (_voiceLocale(voice) ?? '')
+        .replaceAll('_', '-')
+        .toLowerCase();
+    final language = languageCode.toLowerCase();
+    return locale == language || locale.startsWith('$language-');
+  }
+
+  Map<String, String> _preferredFemaleVoice(List<Map<String, String>> voices) {
+    const preferredTerms = [
+      'female',
+      'woman',
+      'samantha',
+      'zira',
+      'google',
+      'natural',
+    ];
+    return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
+  }
+
+  Map<String, String> _preferredMaleVoice(List<Map<String, String>> voices) {
+    const preferredTerms = ['male', 'man', 'david', 'mark', 'google', 'natural'];
+    final maleVoices = voices.where((voice) {
+      final name = (_voiceName(voice) ?? '').toLowerCase();
+      return !name.contains('female') && !name.contains('woman');
+    }).toList(growable: false);
+    if (maleVoices.isEmpty) {
+      return voices.first;
+    }
+
+    return _voiceWithPreferredTerms(maleVoices, preferredTerms) ??
+        maleVoices.first;
+  }
+
+  Map<String, String>? _voiceWithPreferredTerms(
+    List<Map<String, String>> voices,
+    List<String> preferredTerms,
+  ) {
+    for (final term in preferredTerms) {
+      for (final voice in voices) {
+        final name = (_voiceName(voice) ?? '').toLowerCase();
+        if (name.contains(term)) {
+          return voice;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _voiceName(Map<String, String> voice) {
+    return voice['name'] ?? voice['voiceName'];
+  }
+
+  String? _voiceLocale(Map<String, String> voice) {
+    return voice['locale'] ?? voice['language'] ?? voice['languageCode'];
+  }
+
   Future<void> _speakWithWindowsSapi({
     required String text,
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
   }) async {
     debugPrint(
         '_speakWithWindowsSapi starting (text length=${text.length}, accent=${accent.label})');
@@ -426,6 +569,7 @@ class TtsService {
       accent: accent,
       speed: speed,
       pitch: pitch,
+      voiceStyle: voiceStyle,
     );
     await scriptFile.writeAsString(script);
     debugPrint('_speakWithWindowsSapi wrote script file: ${scriptFile.path}');
@@ -493,6 +637,7 @@ class TtsService {
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
   }) {
     final escapedTextFilePath =
         _escapePowerShellSingleQuotedString(textFilePath);
@@ -500,6 +645,7 @@ class TtsService {
         _escapePowerShellSingleQuotedString(accent.languageCode);
     final windowsRate = _windowsRateFor(speed);
     final windowsPitch = _windowsPitchPercentFor(pitch);
+    final preferredGender = _windowsGenderFilterFor(voiceStyle);
 
     return '''
 Add-Type -AssemblyName System.Speech;
@@ -508,7 +654,10 @@ Add-Type -AssemblyName System.Speech;
 \$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer;
 \$speaker.Volume = 100;
 \$speaker.Rate = $windowsRate;
-\$voice = \$speaker.GetInstalledVoices() | Where-Object { \$_.VoiceInfo.Culture.Name -eq '$escapedLanguage' } | Select-Object -First 1;
+\$voices = \$speaker.GetInstalledVoices() | Where-Object { \$_.VoiceInfo.Culture.Name -eq '$escapedLanguage' };
+\$voice = \$null;
+if ('$preferredGender' -ne '') { \$voice = \$voices | Where-Object { \$_.VoiceInfo.Gender.ToString() -eq '$preferredGender' } | Select-Object -First 1; }
+if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
 if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
 \$ssml = "<speak version='1.0' xml:lang='$escapedLanguage' xmlns='http://www.w3.org/2001/10/synthesis'><prosody pitch='$windowsPitch%'>\$escapedText</prosody></speak>";
 \$speaker.SpeakSsml(\$ssml);
@@ -526,6 +675,14 @@ if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
 
   int _windowsPitchPercentFor(double pitch) {
     return ((pitch - 1.0) * 50).round().clamp(-25, 50).toInt();
+  }
+
+  String _windowsGenderFilterFor(VoiceStyle voiceStyle) {
+    return switch (voiceStyle) {
+      VoiceStyle.femaleSmooth => 'Female',
+      VoiceStyle.male => 'Male',
+      VoiceStyle.defaultVoice => '',
+    };
   }
 
   String _escapePowerShellSingleQuotedString(String value) {
