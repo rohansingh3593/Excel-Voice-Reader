@@ -5,6 +5,47 @@ import 'package:flutter/material.dart';
 import '../services/excel_service.dart';
 import '../services/tts_service.dart';
 
+
+class TopicPlaybackItem {
+  const TopicPlaybackItem({
+    required this.id,
+    required this.sheetName,
+    required this.keyword,
+    required this.topic,
+    required this.rows,
+    this.playlistName,
+  });
+
+  final String id;
+  final String sheetName;
+  final String keyword;
+  final String topic;
+  final List<ExcelRowData> rows;
+  final String? playlistName;
+
+  TopicPlaybackItem copyWith({String? playlistName}) {
+    return TopicPlaybackItem(
+      id: id,
+      sheetName: sheetName,
+      keyword: keyword,
+      topic: topic,
+      rows: rows,
+      playlistName: playlistName ?? this.playlistName,
+    );
+  }
+}
+
+class TopicPlaylist {
+  const TopicPlaylist({required this.name, required this.items});
+
+  final String name;
+  final List<TopicPlaybackItem> items;
+
+  TopicPlaylist copyWith({List<TopicPlaybackItem>? items}) {
+    return TopicPlaylist(name: name, items: items ?? this.items);
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -30,6 +71,9 @@ class _HomeScreenState extends State<HomeScreen> {
   double _pitch = 1.0;
   bool _isLoading = false;
   String? _errorMessage;
+  TopicPlaybackItem? _nowPlaying;
+  List<TopicPlaybackItem> _playbackQueue = const <TopicPlaybackItem>[];
+  final Map<String, TopicPlaylist> _playlists = <String, TopicPlaylist>{};
 
   List<ExcelRowData> get _sheetRows {
     final workbook = _workbook;
@@ -179,10 +223,43 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  TopicPlaybackItem? _topicItemFor(String topic, {String? playlistName}) {
+    final sheetName = _selectedSheet;
+    final keyword = _selectedKeyword;
+    if (sheetName == null || keyword == null) {
+      return null;
+    }
+
+    final rows = _sheetRows
+        .where((row) => row.keyword == keyword && row.topic == topic)
+        .toList(growable: false);
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    return TopicPlaybackItem(
+      id: '$sheetName|$keyword|$topic',
+      sheetName: sheetName,
+      keyword: keyword,
+      topic: topic,
+      rows: rows,
+      playlistName: playlistName,
+    );
+  }
+
   Future<void> _selectTopic(String topic) async {
+    final item = _topicItemFor(topic);
+    if (item == null) {
+      _showSnackBar('No content rows found for this topic.');
+      return;
+    }
+
+    await _playTopicNow(item);
+  }
+
+  Future<void> _playTopicNow(TopicPlaybackItem item) async {
     final playbackRequestId = ++_topicPlaybackRequestId;
-    debugPrint(
-        'DEBUG: _selectTopic called with topic=$topic, _selectedKeyword=$_selectedKeyword');
+    debugPrint('DEBUG: Play Now topic=${item.topic}, keyword=${item.keyword}');
 
     await _ttsService.stop();
     _ttsService.clearQueue();
@@ -191,28 +268,27 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final rows = _sheetRows
-        .where((row) => row.keyword == _selectedKeyword && row.topic == topic)
-        .toList(growable: false);
-    debugPrint('DEBUG: Found ${rows.length} rows for this topic');
     setState(() {
-      _selectedTopic = topic;
-      _selectedRow = rows.isNotEmpty ? rows.first : null;
+      _nowPlaying = item;
+      _selectedTopic = item.topic;
+      _selectedRow = item.rows.isNotEmpty ? item.rows.first : null;
     });
 
-    if (rows.isEmpty) {
-      _showSnackBar('No content rows found for this topic.');
-      debugPrint('DEBUG: No rows found');
-      return;
-    }
+    await _speakTopicItem(item, playbackRequestId);
+  }
 
-    final text =
-        rows.map((row) => _buildReadableContent(row.content)).join('\n\n');
-    debugPrint('DEBUG: Prepared text for speech (length=${text.length})');
+  Future<void> _speakTopicItem(
+    TopicPlaybackItem item,
+    int playbackRequestId,
+  ) async {
+    final text = item.rows
+        .map((row) => _buildReadableContent(row.content))
+        .where((content) => content.trim().isNotEmpty)
+        .join('\n\n');
+    debugPrint('DEBUG: Prepared topic text (length=${text.length})');
 
     if (text.trim().isEmpty) {
       _showSnackBar('Selected topic has no readable content.');
-      debugPrint('DEBUG: Text is empty after cleaning');
       return;
     }
 
@@ -220,7 +296,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    debugPrint('DEBUG: Calling _ttsService.speak()');
     await _ttsService.speak(
       text: text,
       accent: _selectedAccent,
@@ -228,7 +303,194 @@ class _HomeScreenState extends State<HomeScreen> {
       pitch: _pitch,
       voiceStyle: _selectedVoiceStyle,
     );
-    debugPrint('DEBUG: speak() returned');
+
+    if (!mounted || playbackRequestId != _topicPlaybackRequestId) {
+      return;
+    }
+
+    setState(() {
+      _nowPlaying = null;
+    });
+    await _playNextQueued();
+  }
+
+  Future<void> _addTopicToQueue(TopicPlaybackItem item) async {
+    setState(() {
+      _playbackQueue = [..._playbackQueue, item];
+    });
+    _showSnackBar('Added "${item.topic}" to queue.');
+
+    if (_nowPlaying == null && !_ttsService.isPlaying) {
+      await _playNextQueued();
+    }
+  }
+
+  Future<void> _playNextQueued() async {
+    if (_playbackQueue.isEmpty) {
+      return;
+    }
+
+    final nextItem = _playbackQueue.first;
+    setState(() {
+      _playbackQueue = _playbackQueue.skip(1).toList(growable: false);
+    });
+    await _playTopicNow(nextItem);
+  }
+
+  void _removeQueueItem(int index) {
+    setState(() {
+      _playbackQueue = [
+        for (var i = 0; i < _playbackQueue.length; i++)
+          if (i != index) _playbackQueue[i],
+      ];
+    });
+  }
+
+  void _moveQueueItem(int index, int delta) {
+    final newIndex = index + delta;
+    if (newIndex < 0 || newIndex >= _playbackQueue.length) {
+      return;
+    }
+
+    final queue = [..._playbackQueue];
+    final item = queue.removeAt(index);
+    queue.insert(newIndex, item);
+    setState(() {
+      _playbackQueue = queue;
+    });
+  }
+
+  void _clearPlaybackQueue() {
+    setState(() {
+      _playbackQueue = const <TopicPlaybackItem>[];
+    });
+  }
+
+  Future<void> _showAddToPlaylistDialog(TopicPlaybackItem item) async {
+    final controller = TextEditingController();
+    final selectedPlaylist = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final playlistNames = _playlists.keys.toList(growable: false)..sort();
+        return AlertDialog(
+          title: const Text('Add to Playlist'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (playlistNames.isNotEmpty) ...[
+                  const Text('Existing playlists'),
+                  const SizedBox(height: 8),
+                  ...playlistNames.map(
+                    (name) => ListTile(
+                      title: Text(name),
+                      onTap: () => Navigator.of(context).pop(name),
+                    ),
+                  ),
+                  const Divider(),
+                ],
+                TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    labelText: 'New playlist name',
+                    border: OutlineInputBorder(),
+                  ),
+                  autofocus: playlistNames.isEmpty,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final name = controller.text.trim();
+                if (name.isNotEmpty) {
+                  Navigator.of(context).pop(name);
+                }
+              },
+              child: const Text('Create / Add'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (!mounted) {
+      return;
+    }
+
+    final playlistName = selectedPlaylist?.trim();
+    if (playlistName == null || playlistName.isEmpty) {
+      return;
+    }
+
+    _addTopicToPlaylist(item, playlistName);
+  }
+
+  void _addTopicToPlaylist(TopicPlaybackItem item, String playlistName) {
+    final current = _playlists[playlistName] ??
+        TopicPlaylist(name: playlistName, items: const <TopicPlaybackItem>[]);
+    final playlistItem = item.copyWith(playlistName: playlistName);
+    setState(() {
+      _playlists[playlistName] = current.copyWith(
+        items: [...current.items, playlistItem],
+      );
+    });
+    _showSnackBar('Added "${item.topic}" to $playlistName.');
+  }
+
+  void _removePlaylistItem(String playlistName, int index) {
+    final playlist = _playlists[playlistName];
+    if (playlist == null) {
+      return;
+    }
+
+    final items = [
+      for (var i = 0; i < playlist.items.length; i++)
+        if (i != index) playlist.items[i],
+    ];
+    setState(() {
+      _playlists[playlistName] = playlist.copyWith(items: items);
+    });
+  }
+
+  Future<void> _playPlaylist(TopicPlaylist playlist) async {
+    if (playlist.items.isEmpty) {
+      return;
+    }
+
+    final first = playlist.items.first.copyWith(playlistName: playlist.name);
+    final rest = playlist.items
+        .skip(1)
+        .map((item) => item.copyWith(playlistName: playlist.name))
+        .toList(growable: false);
+    setState(() {
+      _playbackQueue = [...rest, ..._playbackQueue];
+    });
+    await _playTopicNow(first);
+  }
+
+  Future<void> _addPlaylistToQueue(TopicPlaylist playlist) async {
+    if (playlist.items.isEmpty) {
+      return;
+    }
+
+    final items = playlist.items
+        .map((item) => item.copyWith(playlistName: playlist.name))
+        .toList(growable: false);
+    setState(() {
+      _playbackQueue = [..._playbackQueue, ...items];
+    });
+    _showSnackBar('Added ${items.length} topic(s) from ${playlist.name} to queue.');
+
+    if (_nowPlaying == null && !_ttsService.isPlaying) {
+      await _playNextQueued();
+    }
   }
 
   Future<void> _readRow(ExcelRowData row) async {
@@ -285,9 +547,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final selectedTopic = _selectedTopic;
-    if (selectedTopic != null) {
-      unawaited(_selectTopic(selectedTopic));
+    final nowPlaying = _nowPlaying;
+    if (nowPlaying != null) {
+      unawaited(_playTopicNow(nowPlaying));
       return;
     }
 
@@ -323,11 +585,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _stopSpeech() async {
+    _topicPlaybackRequestId++;
     await _ttsService.stop();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _nowPlaying = null;
+    });
   }
 
   Future<void> _resumeSpeech() async {
     await _ttsService.resume();
+  }
+
+  Future<void> _skipToNextTopic() async {
+    _topicPlaybackRequestId++;
+    await _ttsService.stop();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _nowPlaying = null;
+    });
+    await _playNextQueued();
   }
 
   void _showSnackBar(String message) {
@@ -362,6 +643,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildDropdowns(),
             const SizedBox(height: 14),
             _buildVoiceControls(),
+            const SizedBox(height: 14),
+            _buildNowPlayingDashboard(),
+            const SizedBox(height: 14),
+            _buildQueuePanel(),
+            const SizedBox(height: 14),
+            _buildPlaylistPanel(),
             const SizedBox(height: 18),
             _buildContentSection(),
           ],
@@ -568,20 +855,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                   ),
                 ),
-                ValueListenableBuilder<int>(
-                  valueListenable: _ttsService.queueLength,
-                  builder: (context, len, child) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: len > 0
-                          ? const Color(0xFFEEF2FF)
-                          : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                    ),
-                    child: Text('Queue: $len',
-                        style: const TextStyle(fontSize: 13)),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _playbackQueue.isNotEmpty
+                        ? const Color(0xFFEEF2FF)
+                        : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Text(
+                    'Queue: ${_playbackQueue.length}',
+                    style: const TextStyle(fontSize: 13),
                   ),
                 ),
               ],
@@ -612,7 +898,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Stop'),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: () => _ttsService.skip(),
+                  onPressed: _skipToNextTopic,
                   icon: const Icon(Icons.skip_next_rounded),
                   label: const Text('Next'),
                 ),
@@ -653,6 +939,238 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildNowPlayingDashboard() {
+    final item = _nowPlaying;
+    final content = item == null
+        ? 'No topic is currently playing.'
+        : item.rows
+            .map((row) => _buildReadableContent(row.content))
+            .where((text) => text.trim().isNotEmpty)
+            .join('\n\n');
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.graphic_eq_rounded),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Now Playing',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Chip(label: Text('Queue: ${_playbackQueue.length}')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              item?.topic ?? 'Nothing playing',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              item == null
+                  ? 'Choose Play Now on a topic to start.'
+                  : '${item.sheetName} • ${item.keyword}${item.playlistName == null ? '' : ' • Playlist: ${item.playlistName}'}',
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 120),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFCBD5E1)),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  content.isEmpty ? '—' : content,
+                  maxLines: null,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: item == null ? null : () => _playTopicNow(item),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Play'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _pauseSpeech,
+                  icon: const Icon(Icons.pause_rounded),
+                  label: const Text('Pause'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _resumeSpeech,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Resume'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _stopSpeech,
+                  icon: const Icon(Icons.stop_rounded),
+                  label: const Text('Stop'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _skipToNextTopic,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Next'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Voice: ${_selectedVoiceStyle.label}',
+              style: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQueuePanel() {
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.queue_music_rounded),
+        title: Text('Queue (${_playbackQueue.length})'),
+        subtitle: const Text('Queued topics play automatically after the current topic.'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          if (_playbackQueue.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text('No topics in queue.'),
+            )
+          else ...[
+            for (var index = 0; index < _playbackQueue.length; index++)
+              _buildQueueItemTile(_playbackQueue[index], index),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _clearPlaybackQueue,
+                icon: const Icon(Icons.clear_all_rounded),
+                label: const Text('Clear Queue'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQueueItemTile(TopicPlaybackItem item, int index) {
+    return Card(
+      child: ListTile(
+        title: Text(item.topic),
+        subtitle: Text('${item.sheetName} • ${item.keyword}'),
+        trailing: Wrap(
+          spacing: 2,
+          children: [
+            IconButton(
+              tooltip: 'Move up',
+              onPressed: index == 0 ? null : () => _moveQueueItem(index, -1),
+              icon: const Icon(Icons.arrow_upward_rounded),
+            ),
+            IconButton(
+              tooltip: 'Move down',
+              onPressed: index == _playbackQueue.length - 1
+                  ? null
+                  : () => _moveQueueItem(index, 1),
+              icon: const Icon(Icons.arrow_downward_rounded),
+            ),
+            IconButton(
+              tooltip: 'Remove',
+              onPressed: () => _removeQueueItem(index),
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaylistPanel() {
+    final playlists = _playlists.values.toList(growable: false);
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.playlist_play_rounded),
+        title: Text('Playlists (${playlists.length})'),
+        subtitle: const Text('Save topics, play a playlist, or add it to queue.'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          if (playlists.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text('No playlists yet. Use Add to Playlist on a topic.'),
+            )
+          else
+            ...playlists.map(_buildPlaylistTile),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaylistTile(TopicPlaylist playlist) {
+    return Card(
+      child: ExpansionTile(
+        title: Text(playlist.name),
+        subtitle: Text('${playlist.items.length} topic(s)'),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: playlist.items.isEmpty
+                    ? null
+                    : () => _playPlaylist(playlist),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Play Playlist'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: playlist.items.isEmpty
+                    ? null
+                    : () => _addPlaylistToQueue(playlist),
+                icon: const Icon(Icons.queue_rounded),
+                label: const Text('Add Playlist to Queue'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (playlist.items.isEmpty)
+            const Text('This playlist is empty.')
+          else
+            ...playlist.items.asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              return ListTile(
+                dense: true,
+                title: Text(item.topic),
+                subtitle: Text('${item.sheetName} • ${item.keyword}'),
+                trailing: IconButton(
+                  tooltip: 'Remove from playlist',
+                  icon: const Icon(Icons.remove_circle_outline_rounded),
+                  onPressed: () => _removePlaylistItem(playlist.name, index),
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
@@ -759,17 +1277,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         ...topics.map((topic) {
-          final isSelected = topic == _selectedTopic;
-          return Card(
-            color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
-            child: ListTile(
-              title: Text(topic),
-              subtitle:
-                  isSelected ? const Text('Tap again to replay content') : null,
-              trailing: const Icon(Icons.play_arrow_rounded),
-              onTap: () => _selectTopic(topic),
-            ),
-          );
+          final item = _topicItemFor(topic);
+          if (item == null) {
+            return const SizedBox.shrink();
+          }
+
+          return _buildTopicCard(item);
         }),
         if (_selectedTopic != null && _selectedTopicRows.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -781,6 +1294,59 @@ class _HomeScreenState extends State<HomeScreen> {
           ..._selectedTopicRows.map(_buildContentCard),
         ],
       ],
+    );
+  }
+
+  Widget _buildTopicCard(TopicPlaybackItem item) {
+    final isSelected = item.topic == _selectedTopic;
+    return Card(
+      color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item.topic,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${item.sheetName} • ${item.keyword}',
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
+            if (isSelected) ...[
+              const SizedBox(height: 4),
+              const Text(
+                'Currently selected',
+                style: TextStyle(color: Color(0xFF2563EB)),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => _playTopicNow(item),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Play Now'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => _addTopicToQueue(item),
+                  icon: const Icon(Icons.queue_rounded),
+                  label: const Text('Add to Queue'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => _showAddToPlaylistDialog(item),
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  label: const Text('Add to Playlist'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 

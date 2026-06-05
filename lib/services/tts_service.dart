@@ -37,13 +37,14 @@ class _TtsQueueItem {
     required this.speed,
     required this.pitch,
     required this.voiceStyle,
-  });
+  }) : completion = Completer<void>();
 
   final String text;
   AccentOption accent;
   SpeechSpeed speed;
   double pitch;
   VoiceStyle voiceStyle;
+  final Completer<void> completion;
 }
 
 class TtsService {
@@ -87,16 +88,18 @@ class TtsService {
     }
 
     debugPrint('TtsService.speak() queueing text (length=${trimmed.length})');
-    _queue.add(_TtsQueueItem(
+    final queueItem = _TtsQueueItem(
       text: trimmed,
       accent: accent,
       speed: speed,
       pitch: pitch,
       voiceStyle: voiceStyle,
-    ));
+    );
+    _queue.add(queueItem);
     queueLength.value = _queue.length;
     debugPrint('TtsService.speak() queue length now ${_queue.length}');
     unawaited(_processQueue());
+    return queueItem.completion.future;
   }
 
   bool get isPlaying => _isProcessingQueue;
@@ -211,6 +214,11 @@ class TtsService {
   /// Stop and clear the queue.
   Future<void> stop() async {
     _speechGeneration++;
+    for (final item in _queue) {
+      if (!item.completion.isCompleted) {
+        item.completion.complete();
+      }
+    }
     _queue.clear();
     queueLength.value = 0;
     _currentItem = null;
@@ -232,6 +240,11 @@ class TtsService {
 
   /// Clear queued items without stopping the current one.
   void clearQueue() {
+    for (final item in _queue) {
+      if (!item.completion.isCompleted) {
+        item.completion.complete();
+      }
+    }
     _queue.clear();
     queueLength.value = 0;
   }
@@ -273,6 +286,10 @@ class TtsService {
         _reportPlaybackError(
           'Unable to play audio. Check your phone media volume and Text-to-Speech voice data.',
         );
+      } finally {
+        if (!item.completion.isCompleted) {
+          item.completion.complete();
+        }
       }
       _currentItem = null;
     }
