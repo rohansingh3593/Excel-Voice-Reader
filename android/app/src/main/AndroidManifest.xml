@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.excel_voice_reader">
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Needed by Android 12 and below when file picker falls back to direct file access. -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
