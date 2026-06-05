@@ -12,27 +12,51 @@ class AccentOption {
 }
 
 enum SpeechSpeed {
-  slow('Slow', 0.35),
-  normal('Normal', 0.50),
-  fast('Fast', 0.70);
+  slow('Slow', 0.75),
+  normal('Normal', 1.0),
+  fast('Fast', 1.25);
 
   const SpeechSpeed(this.label, this.rate);
   final String label;
   final double rate;
 }
 
+enum VoiceStyle {
+  femaleSmooth('Female'),
+  male('Male'),
+  defaultVoice('Default');
+
+  const VoiceStyle(this.label);
+  final String label;
+}
+
 class _TtsQueueItem {
-  const _TtsQueueItem({
+  _TtsQueueItem({
     required this.text,
     required this.accent,
     required this.speed,
     required this.pitch,
+    required this.voiceStyle,
+  }) : completion = Completer<void>();
+
+  final String text;
+  AccentOption accent;
+  SpeechSpeed speed;
+  double pitch;
+  VoiceStyle voiceStyle;
+  final Completer<void> completion;
+}
+
+class _SpeechTextChunk {
+  const _SpeechTextChunk({
+    required this.text,
+    required this.languageCode,
+    required this.isHindi,
   });
 
   final String text;
-  final AccentOption accent;
-  final SpeechSpeed speed;
-  final double pitch;
+  final String languageCode;
+  final bool isHindi;
 }
 
 class TtsService {
@@ -48,6 +72,8 @@ class TtsService {
   ];
 
   static const int _speechChunkSize = 3500;
+  static const String _hindiLanguageCode = 'hi-IN';
+  static final RegExp _hindiRegex = RegExp(r'[\u0900-\u097F]');
 
   final FlutterTts _tts = FlutterTts();
   final List<_TtsQueueItem> _queue = [];
@@ -67,6 +93,7 @@ class TtsService {
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -75,18 +102,69 @@ class TtsService {
     }
 
     debugPrint('TtsService.speak() queueing text (length=${trimmed.length})');
-    _queue.add(_TtsQueueItem(
+    final queueItem = _TtsQueueItem(
       text: trimmed,
       accent: accent,
       speed: speed,
       pitch: pitch,
-    ));
+      voiceStyle: voiceStyle,
+    );
+    _queue.add(queueItem);
     queueLength.value = _queue.length;
     debugPrint('TtsService.speak() queue length now ${_queue.length}');
     unawaited(_processQueue());
+    return queueItem.completion.future;
   }
 
   bool get isPlaying => _isProcessingQueue;
+
+  void applyPlaybackSettings({
+    required AccentOption accent,
+    required SpeechSpeed speed,
+    required double pitch,
+    required VoiceStyle voiceStyle,
+  }) {
+    _applySettingsToItem(
+      _currentItem,
+      accent: accent,
+      speed: speed,
+      pitch: pitch,
+      voiceStyle: voiceStyle,
+    );
+    _applySettingsToItem(
+      _pausedItem,
+      accent: accent,
+      speed: speed,
+      pitch: pitch,
+      voiceStyle: voiceStyle,
+    );
+    for (final item in _queue) {
+      _applySettingsToItem(
+        item,
+        accent: accent,
+        speed: speed,
+        pitch: pitch,
+        voiceStyle: voiceStyle,
+      );
+    }
+  }
+
+  void _applySettingsToItem(
+    _TtsQueueItem? item, {
+    required AccentOption accent,
+    required SpeechSpeed speed,
+    required double pitch,
+    required VoiceStyle voiceStyle,
+  }) {
+    if (item == null) {
+      return;
+    }
+
+    item.accent = accent;
+    item.speed = speed;
+    item.pitch = pitch;
+    item.voiceStyle = voiceStyle;
+  }
 
   /// Pause current speech. On Windows this kills the process and stores
   /// the current item so resume() can re-enqueue it. On other platforms
@@ -150,8 +228,14 @@ class TtsService {
   /// Stop and clear the queue.
   Future<void> stop() async {
     _speechGeneration++;
+    for (final item in _queue) {
+      if (!item.completion.isCompleted) {
+        item.completion.complete();
+      }
+    }
     _queue.clear();
     queueLength.value = 0;
+    _currentItem = null;
     _pausedItem = null;
     if (Platform.isWindows) {
       try {
@@ -170,6 +254,11 @@ class TtsService {
 
   /// Clear queued items without stopping the current one.
   void clearQueue() {
+    for (final item in _queue) {
+      if (!item.completion.isCompleted) {
+        item.completion.complete();
+      }
+    }
     _queue.clear();
     queueLength.value = 0;
   }
@@ -196,6 +285,8 @@ class TtsService {
             accent: item.accent,
             speed: item.speed,
             pitch: item.pitch,
+            voiceStyle: item.voiceStyle,
+            generation: _speechGeneration,
           );
         } else {
           await _speakWithPlatformTts(
@@ -209,6 +300,10 @@ class TtsService {
         _reportPlaybackError(
           'Unable to play audio. Check your phone media volume and Text-to-Speech voice data.',
         );
+      } finally {
+        if (!item.completion.isCompleted) {
+          item.completion.complete();
+        }
       }
       _currentItem = null;
     }
@@ -258,12 +353,12 @@ class TtsService {
     required int generation,
   }) async {
     await _configuration;
-    await _setLanguageWithFallback(item.accent.languageCode);
-    await _tts.setSpeechRate(item.speed.rate);
-    await _tts.setPitch(item.pitch);
     await _tts.setVolume(1.0);
 
-    final chunks = _splitTextForSpeech(item.text);
+    final chunks = _speechChunksForText(
+      text: item.text,
+      englishLanguageCode: item.accent.languageCode,
+    );
     debugPrint(
       'TtsService._speakWithPlatformTts() speaking ${chunks.length} chunk(s)',
     );
@@ -275,17 +370,92 @@ class TtsService {
       }
 
       final chunk = chunks[index];
+      final speechRate = item.speed.rate;
+      final speechPitch = item.pitch;
       debugPrint(
         'TtsService._speakWithPlatformTts() chunk ${index + 1}/${chunks.length} '
-        '(length=${chunk.length})',
+        '(length=${chunk.text.length}, language=${chunk.languageCode})',
       );
-      final result = await _tts.speak(chunk);
+      // ignore: avoid_print
+      print('Detected Hindi: ${chunk.isHindi}');
+      // ignore: avoid_print
+      print('Selected TTS Language: ${chunk.languageCode}');
+      // ignore: avoid_print
+      print('Speaking Text: ${chunk.text}');
+      // ignore: avoid_print
+      print('Speech Rate: $speechRate');
+      // ignore: avoid_print
+      print('Speech Pitch: $speechPitch');
+      await _setLanguageWithFallback(chunk.languageCode);
+      await _applyVoiceForStyle(
+        languageCode: chunk.languageCode,
+        voiceStyle: item.voiceStyle,
+      );
+      await _tts.setSpeechRate(speechRate);
+      await _tts.setPitch(speechPitch);
+      final result = await _tts.speak(chunk.text);
       if (result == 0 || result == false) {
         throw StateError(
           'The text-to-speech engine rejected the speech request.',
         );
       }
     }
+  }
+
+  List<_SpeechTextChunk> _speechChunksForText({
+    required String text,
+    required String englishLanguageCode,
+  }) {
+    final units = _languageDetectionUnits(text);
+    final chunks = <_SpeechTextChunk>[];
+
+    for (final unit in units) {
+      final isHindi = _isHindiText(unit);
+      final languageCode = isHindi ? _hindiLanguageCode : englishLanguageCode;
+      final splitUnits = _splitTextForSpeech(unit);
+      for (final splitUnit in splitUnits) {
+        chunks.add(_SpeechTextChunk(
+          text: splitUnit,
+          languageCode: languageCode,
+          isHindi: isHindi,
+        ));
+      }
+    }
+
+    return chunks;
+  }
+
+  List<String> _languageDetectionUnits(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return const <String>[];
+    }
+
+    final matches = RegExp(r'[^.!?।\n]+[.!?।]*|\n+')
+        .allMatches(trimmed)
+        .map((match) => match.group(0)?.trim() ?? '')
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (matches.isEmpty) {
+      return <String>[trimmed];
+    }
+
+    final units = <String>[];
+    final languages = <bool>[];
+    for (final match in matches) {
+      final isHindi = _isHindiText(match);
+      if (units.isNotEmpty && languages.last == isHindi) {
+        units[units.length - 1] = '${units.last}\n$match';
+      } else {
+        units.add(match);
+        languages.add(isHindi);
+      }
+    }
+    return units;
+  }
+
+  bool _isHindiText(String text) {
+    return _hindiRegex.hasMatch(text);
   }
 
   List<String> _splitTextForSpeech(String text) {
@@ -342,6 +512,11 @@ class TtsService {
       debugPrint('TtsService: failed to set language $languageCode: $error');
     }
 
+    if (languageCode == _hindiLanguageCode) {
+      debugPrint('TtsService: Hindi language unavailable; not falling back to an English voice');
+      return;
+    }
+
     if (languageCode != 'en-US') {
       try {
         debugPrint('TtsService: falling back to en-US');
@@ -355,29 +530,216 @@ class TtsService {
     debugPrint('TtsService: using default system voice');
   }
 
+  Future<void> _applyVoiceForStyle({
+    required String languageCode,
+    required VoiceStyle voiceStyle,
+  }) async {
+    final selectedVoice = await _selectVoiceForStyle(
+      languageCode: languageCode,
+      voiceStyle: voiceStyle,
+    );
+    if (selectedVoice == null) {
+      debugPrint(
+        'TtsService: no ${voiceStyle.label} voice found for $languageCode; using default voice',
+      );
+      return;
+    }
+
+    try {
+      await _tts.setVoice(selectedVoice);
+      debugPrint('TtsService: selected voice ${selectedVoice['name']}');
+    } catch (error) {
+      debugPrint('TtsService: failed to set voice $selectedVoice: $error');
+    }
+  }
+
+  Future<Map<String, String>?> _selectVoiceForStyle({
+    required String languageCode,
+    required VoiceStyle voiceStyle,
+  }) async {
+    final dynamic voices;
+    try {
+      voices = await _tts.getVoices;
+    } catch (error) {
+      debugPrint('TtsService: failed to load voices: $error');
+      return null;
+    }
+
+    if (voices is! Iterable) {
+      return null;
+    }
+
+    final languageVoices = voices
+        .whereType<Map>()
+        .map(_stringVoiceMap)
+        .where((voice) => _voiceMatchesLanguage(voice, languageCode))
+        .toList(growable: false);
+    if (languageVoices.isEmpty) {
+      return null;
+    }
+
+    if (languageCode == _hindiLanguageCode) {
+      return _preferredHindiVoice(languageVoices);
+    }
+
+    return switch (voiceStyle) {
+      VoiceStyle.femaleSmooth => _preferredFemaleVoice(languageVoices),
+      VoiceStyle.male => _preferredMaleVoice(languageVoices),
+      VoiceStyle.defaultVoice => languageVoices.first,
+    };
+  }
+
+  Map<String, String> _stringVoiceMap(Map voice) {
+    return voice.map(
+      (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
+    );
+  }
+
+  bool _voiceMatchesLanguage(Map<String, String> voice, String languageCode) {
+    final locale = (_voiceLocale(voice) ?? '')
+        .replaceAll('_', '-')
+        .toLowerCase();
+    final language = languageCode.toLowerCase();
+    final primaryLanguage = language.split('-').first;
+    return locale == language ||
+        locale.startsWith('$language-') ||
+        locale == primaryLanguage ||
+        locale.startsWith('$primaryLanguage-');
+  }
+
+  Map<String, String> _preferredHindiVoice(List<Map<String, String>> voices) {
+    const preferredTerms = [
+      'hi-in',
+      'hindi',
+      'swara',
+      'madhur',
+      'google हिन्दी',
+      'हिन्दी',
+      'हिंदी',
+      'google',
+    ];
+    return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
+  }
+
+  Map<String, String> _preferredFemaleVoice(List<Map<String, String>> voices) {
+    const preferredTerms = [
+      'female',
+      'woman',
+      'samantha',
+      'zira',
+      'google',
+      'natural',
+    ];
+    return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
+  }
+
+  Map<String, String> _preferredMaleVoice(List<Map<String, String>> voices) {
+    const preferredTerms = ['male', 'man', 'david', 'mark', 'google', 'natural'];
+    final maleVoices = voices.where((voice) {
+      final name = (_voiceName(voice) ?? '').toLowerCase();
+      return !name.contains('female') && !name.contains('woman');
+    }).toList(growable: false);
+    if (maleVoices.isEmpty) {
+      return voices.first;
+    }
+
+    return _voiceWithPreferredTerms(maleVoices, preferredTerms) ??
+        maleVoices.first;
+  }
+
+  Map<String, String>? _voiceWithPreferredTerms(
+    List<Map<String, String>> voices,
+    List<String> preferredTerms,
+  ) {
+    for (final term in preferredTerms) {
+      for (final voice in voices) {
+        final haystack = [
+          _voiceName(voice),
+          _voiceLocale(voice),
+        ].whereType<String>().join(' ').toLowerCase();
+        if (haystack.contains(term.toLowerCase())) {
+          return voice;
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _voiceName(Map<String, String> voice) {
+    return voice['name'] ?? voice['voiceName'];
+  }
+
+  String? _voiceLocale(Map<String, String> voice) {
+    return voice['locale'] ?? voice['language'] ?? voice['languageCode'];
+  }
+
   Future<void> _speakWithWindowsSapi({
     required String text,
     required AccentOption accent,
     required SpeechSpeed speed,
     required double pitch,
+    required VoiceStyle voiceStyle,
+    required int generation,
   }) async {
+    final chunks = _speechChunksForText(
+      text: text,
+      englishLanguageCode: accent.languageCode,
+    );
     debugPrint(
-        '_speakWithWindowsSapi starting (text length=${text.length}, accent=${accent.label})');
-    // write text to temp file and call PowerShell to Speak it
-    final tempDir = Directory.systemTemp;
-    final textFile = File(
-        '${tempDir.path}${Platform.pathSeparator}flutter_tts_text_${DateTime.now().millisecondsSinceEpoch}.txt');
-    final scriptFile = File(
-        '${tempDir.path}${Platform.pathSeparator}flutter_tts_${DateTime.now().millisecondsSinceEpoch}.ps1');
+      '_speakWithWindowsSapi starting (${chunks.length} chunk(s), accent=${accent.label})',
+    );
 
-    await textFile.writeAsString(text);
+    for (var index = 0; index < chunks.length; index++) {
+      if (generation != _speechGeneration) {
+        debugPrint('_speakWithWindowsSapi cancelled');
+        return;
+      }
+
+      final chunk = chunks[index];
+      // ignore: avoid_print
+      print('Detected Hindi: ${chunk.isHindi}');
+      // ignore: avoid_print
+      print('Selected TTS Language: ${chunk.languageCode}');
+      // ignore: avoid_print
+      print('Speaking Text: ${chunk.text}');
+      await _speakWindowsChunk(
+        text: chunk.text,
+        languageCode: chunk.languageCode,
+        speed: speed,
+        pitch: pitch,
+        voiceStyle: voiceStyle,
+        generation: generation,
+      );
+    }
+  }
+
+  Future<void> _speakWindowsChunk({
+    required String text,
+    required String languageCode,
+    required SpeechSpeed speed,
+    required double pitch,
+    required VoiceStyle voiceStyle,
+    required int generation,
+  }) async {
+    final tempDir = Directory.systemTemp;
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    final textFile = File(
+      '${tempDir.path}${Platform.pathSeparator}flutter_tts_text_$timestamp.txt',
+    );
+    final scriptFile = File(
+      '${tempDir.path}${Platform.pathSeparator}flutter_tts_$timestamp.ps1',
+    );
+
+    await textFile.writeAsString(text, encoding: utf8);
     debugPrint('_speakWithWindowsSapi wrote text file: ${textFile.path}');
     final script = _buildWindowsSpeechScript(
       textFilePath: textFile.path,
-      accent: accent,
+      languageCode: languageCode,
       speed: speed,
+      pitch: pitch,
+      voiceStyle: voiceStyle,
     );
-    await scriptFile.writeAsString(script);
+    await scriptFile.writeAsString(script, encoding: utf8);
     debugPrint('_speakWithWindowsSapi wrote script file: ${scriptFile.path}');
 
     try {
@@ -392,12 +754,11 @@ class TtsService {
             '-ExecutionPolicy',
             'Bypass',
             '-File',
-            scriptFile.path
+            scriptFile.path,
           ],
           runInShell: false,
         );
       } catch (e) {
-        // fallback to pwsh
         process = await Process.start(
           'pwsh.exe',
           [
@@ -406,23 +767,42 @@ class TtsService {
             '-ExecutionPolicy',
             'Bypass',
             '-File',
-            scriptFile.path
+            scriptFile.path,
           ],
           runInShell: false,
         );
       }
 
+      if (generation != _speechGeneration) {
+        process.kill();
+        debugPrint('_speakWithWindowsSapi cancelled before playback');
+        return;
+      }
+
+      // ignore: avoid_print
+      print('Speech Rate: ${speed.rate}');
+      // ignore: avoid_print
+      print('Speech Pitch: $pitch');
       _windowsProcess = process;
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
       final stderrFuture = process.stderr.transform(utf8.decoder).join();
       final exitCode = await process.exitCode;
       final stdoutStr = await stdoutFuture;
       final stderrStr = await stderrFuture;
-      _windowsProcess = null;
+      if (identical(_windowsProcess, process)) {
+        _windowsProcess = null;
+      }
 
       if (exitCode != 0) {
-        debugPrint('Windows TTS exited with code $exitCode: $stderrStr');
+        if (generation != _speechGeneration || exitCode == -1) {
+          debugPrint('Windows TTS playback was stopped.');
+        } else {
+          debugPrint('Windows TTS exited with code $exitCode: $stderrStr');
+        }
       } else {
+        if (stdoutStr.trim().isNotEmpty) {
+          debugPrint('Windows TTS output: $stdoutStr');
+        }
         debugPrint('Windows TTS completed successfully');
       }
     } catch (e, stack) {
@@ -436,25 +816,53 @@ class TtsService {
 
   String _buildWindowsSpeechScript({
     required String textFilePath,
-    required AccentOption accent,
+    required String languageCode,
     required SpeechSpeed speed,
+    required double pitch,
+    required VoiceStyle voiceStyle,
   }) {
     final escapedTextFilePath =
         _escapePowerShellSingleQuotedString(textFilePath);
     final escapedLanguage =
-        _escapePowerShellSingleQuotedString(accent.languageCode);
+        _escapePowerShellSingleQuotedString(languageCode);
     final windowsRate = _windowsRateFor(speed);
+    final windowsPitch = _windowsPitchPercentFor(pitch);
+    final preferredGender = _windowsGenderFilterFor(voiceStyle);
 
     return '''
-Add-Type -AssemblyName System.Speech;
-\$rawText = Get-Content -Raw -LiteralPath '$escapedTextFilePath';
-\$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-\$speaker.Volume = 100;
-\$speaker.Rate = $windowsRate;
-\$voice = \$speaker.GetInstalledVoices() | Where-Object { \$_.VoiceInfo.Culture.Name -eq '$escapedLanguage' } | Select-Object -First 1;
-if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
-\$speaker.Speak(\$rawText);
-\$speaker.Dispose();
+\$ErrorActionPreference = 'Stop';
+\$speaker = \$null;
+try {
+  Add-Type -AssemblyName System.Speech;
+  \$rawText = Get-Content -Raw -Encoding UTF8 -LiteralPath '$escapedTextFilePath';
+  \$escapedText = [System.Security.SecurityElement]::Escape(\$rawText);
+  \$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+  \$speaker.Volume = 100;
+  \$speaker.Rate = $windowsRate;
+  \$requestedCulture = '$escapedLanguage';
+  \$neutralCulture = (\$requestedCulture -split '-')[0];
+  \$voices = \$speaker.GetInstalledVoices() | Where-Object { \$_.Enabled -and \$_.VoiceInfo.Culture.Name -eq \$requestedCulture };
+  if (-not \$voices) { \$voices = \$speaker.GetInstalledVoices() | Where-Object { \$_.Enabled -and \$_.VoiceInfo.Culture.TwoLetterISOLanguageName -eq \$neutralCulture }; }
+  \$voice = \$null;
+  if ('$preferredGender' -ne '') { \$voice = \$voices | Where-Object { \$_.VoiceInfo.Gender.ToString() -eq '$preferredGender' } | Select-Object -First 1; }
+  if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
+  if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
+  \$spokenCulture = \$speaker.Voice.Culture.Name;
+  \$pitch = $windowsPitch;
+  \$pitchValue = if (\$pitch -gt 0) { "+\$pitch%" } elseif (\$pitch -lt 0) { "\$pitch%" } else { 'default' };
+  \$ssml = "<speak version='1.0' xml:lang='\$spokenCulture' xmlns='http://www.w3.org/2001/10/synthesis'><prosody pitch='\$pitchValue'>\$escapedText</prosody></speak>";
+  try {
+    \$speaker.SpeakSsml(\$ssml);
+  } catch {
+    Write-Output "SSML playback failed; falling back to plain SAPI speech. \$(\$_.Exception.Message)";
+    \$speaker.Speak(\$rawText);
+  }
+} catch {
+  Write-Error \$_.Exception.Message;
+  exit 1;
+} finally {
+  if (\$speaker -ne \$null) { \$speaker.Dispose(); }
+}
 ''';
   }
 
@@ -463,6 +871,18 @@ if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
       SpeechSpeed.slow => -3,
       SpeechSpeed.normal => 0,
       SpeechSpeed.fast => 3,
+    };
+  }
+
+  int _windowsPitchPercentFor(double pitch) {
+    return ((pitch - 1.0) * 50).round().clamp(-25, 50).toInt();
+  }
+
+  String _windowsGenderFilterFor(VoiceStyle voiceStyle) {
+    return switch (voiceStyle) {
+      VoiceStyle.femaleSmooth => 'Female',
+      VoiceStyle.male => 'Male',
+      VoiceStyle.defaultVoice => '',
     };
   }
 
