@@ -12,9 +12,9 @@ class AccentOption {
 }
 
 enum SpeechSpeed {
-  slow('Slow', 0.35),
-  normal('Normal', 0.50),
-  fast('Fast', 0.70);
+  slow('Slow', 0.75),
+  normal('Normal', 1.0),
+  fast('Fast', 1.25);
 
   const SpeechSpeed(this.label, this.rate);
   final String label;
@@ -22,7 +22,7 @@ enum SpeechSpeed {
 }
 
 class _TtsQueueItem {
-  const _TtsQueueItem({
+  _TtsQueueItem({
     required this.text,
     required this.accent,
     required this.speed,
@@ -30,9 +30,9 @@ class _TtsQueueItem {
   });
 
   final String text;
-  final AccentOption accent;
-  final SpeechSpeed speed;
-  final double pitch;
+  AccentOption accent;
+  SpeechSpeed speed;
+  double pitch;
 }
 
 class TtsService {
@@ -87,6 +87,48 @@ class TtsService {
   }
 
   bool get isPlaying => _isProcessingQueue;
+
+  void applyPlaybackSettings({
+    required AccentOption accent,
+    required SpeechSpeed speed,
+    required double pitch,
+  }) {
+    _applySettingsToItem(
+      _currentItem,
+      accent: accent,
+      speed: speed,
+      pitch: pitch,
+    );
+    _applySettingsToItem(
+      _pausedItem,
+      accent: accent,
+      speed: speed,
+      pitch: pitch,
+    );
+    for (final item in _queue) {
+      _applySettingsToItem(
+        item,
+        accent: accent,
+        speed: speed,
+        pitch: pitch,
+      );
+    }
+  }
+
+  void _applySettingsToItem(
+    _TtsQueueItem? item, {
+    required AccentOption accent,
+    required SpeechSpeed speed,
+    required double pitch,
+  }) {
+    if (item == null) {
+      return;
+    }
+
+    item.accent = accent;
+    item.speed = speed;
+    item.pitch = pitch;
+  }
 
   /// Pause current speech. On Windows this kills the process and stores
   /// the current item so resume() can re-enqueue it. On other platforms
@@ -260,8 +302,6 @@ class TtsService {
   }) async {
     await _configuration;
     await _setLanguageWithFallback(item.accent.languageCode);
-    await _tts.setSpeechRate(item.speed.rate);
-    await _tts.setPitch(item.pitch);
     await _tts.setVolume(1.0);
 
     final chunks = _splitTextForSpeech(item.text);
@@ -276,10 +316,18 @@ class TtsService {
       }
 
       final chunk = chunks[index];
+      final speechRate = item.speed.rate;
+      final speechPitch = item.pitch;
       debugPrint(
         'TtsService._speakWithPlatformTts() chunk ${index + 1}/${chunks.length} '
         '(length=${chunk.length})',
       );
+      // ignore: avoid_print
+      print('Speech Rate: $speechRate');
+      // ignore: avoid_print
+      print('Speech Pitch: $speechPitch');
+      await _tts.setSpeechRate(speechRate);
+      await _tts.setPitch(speechPitch);
       final result = await _tts.speak(chunk);
       if (result == 0 || result == false) {
         throw StateError(
@@ -377,6 +425,7 @@ class TtsService {
       textFilePath: textFile.path,
       accent: accent,
       speed: speed,
+      pitch: pitch,
     );
     await scriptFile.writeAsString(script);
     debugPrint('_speakWithWindowsSapi wrote script file: ${scriptFile.path}');
@@ -413,6 +462,10 @@ class TtsService {
         );
       }
 
+      // ignore: avoid_print
+      print('Speech Rate: ${speed.rate}');
+      // ignore: avoid_print
+      print('Speech Pitch: $pitch');
       _windowsProcess = process;
       final stdoutFuture = process.stdout.transform(utf8.decoder).join();
       final stderrFuture = process.stderr.transform(utf8.decoder).join();
@@ -439,22 +492,26 @@ class TtsService {
     required String textFilePath,
     required AccentOption accent,
     required SpeechSpeed speed,
+    required double pitch,
   }) {
     final escapedTextFilePath =
         _escapePowerShellSingleQuotedString(textFilePath);
     final escapedLanguage =
         _escapePowerShellSingleQuotedString(accent.languageCode);
     final windowsRate = _windowsRateFor(speed);
+    final windowsPitch = _windowsPitchPercentFor(pitch);
 
     return '''
 Add-Type -AssemblyName System.Speech;
 \$rawText = Get-Content -Raw -LiteralPath '$escapedTextFilePath';
+\$escapedText = [System.Security.SecurityElement]::Escape(\$rawText);
 \$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer;
 \$speaker.Volume = 100;
 \$speaker.Rate = $windowsRate;
 \$voice = \$speaker.GetInstalledVoices() | Where-Object { \$_.VoiceInfo.Culture.Name -eq '$escapedLanguage' } | Select-Object -First 1;
 if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
-\$speaker.Speak(\$rawText);
+\$ssml = "<speak version='1.0' xml:lang='$escapedLanguage' xmlns='http://www.w3.org/2001/10/synthesis'><prosody pitch='$windowsPitch%'>\$escapedText</prosody></speak>";
+\$speaker.SpeakSsml(\$ssml);
 \$speaker.Dispose();
 ''';
   }
@@ -465,6 +522,10 @@ if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
       SpeechSpeed.normal => 0,
       SpeechSpeed.fast => 3,
     };
+  }
+
+  int _windowsPitchPercentFor(double pitch) {
+    return ((pitch - 1.0) * 50).round().clamp(-25, 50).toInt();
   }
 
   String _escapePowerShellSingleQuotedString(String value) {

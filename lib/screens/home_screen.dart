@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/excel_service.dart';
@@ -228,6 +230,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _readRow(ExcelRowData row) async {
+    await _ttsService.stop();
+    _ttsService.clearQueue();
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       _selectedRow = row;
     });
@@ -256,6 +265,46 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _readRow(row);
+  }
+
+  void _applyPlaybackSettings() {
+    _ttsService.applyPlaybackSettings(
+      accent: _selectedAccent,
+      speed: _selectedSpeed,
+      pitch: _pitch,
+    );
+  }
+
+  void _restartPlaybackIfActive() {
+    _applyPlaybackSettings();
+    if (!_ttsService.isPlaying) {
+      return;
+    }
+
+    final selectedTopic = _selectedTopic;
+    if (selectedTopic != null) {
+      unawaited(_selectTopic(selectedTopic));
+      return;
+    }
+
+    final selectedRow = _selectedRow;
+    if (selectedRow != null) {
+      unawaited(_readRow(selectedRow));
+    }
+  }
+
+  void _changeSpeed(SpeechSpeed speed) {
+    setState(() {
+      _selectedSpeed = speed;
+    });
+    _restartPlaybackIfActive();
+  }
+
+  void _changePitch(double pitch) {
+    setState(() {
+      _pitch = pitch;
+    });
+    _restartPlaybackIfActive();
   }
 
   Future<void> _pauseSpeech() async {
@@ -460,6 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 setState(() {
                   _selectedAccent = accent;
                 });
+                _restartPlaybackIfActive();
               },
             ),
           ],
@@ -545,9 +595,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   .toList(),
               selected: {_selectedSpeed},
               onSelectionChanged: (selection) {
-                setState(() {
-                  _selectedSpeed = selection.first;
-                });
+                _changeSpeed(selection.first);
               },
             ),
             const SizedBox(height: 10),
@@ -563,11 +611,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     max: 2.0,
                     divisions: 6,
                     label: _pitch.toStringAsFixed(1),
-                    onChanged: (value) {
-                      setState(() {
-                        _pitch = value;
-                      });
-                    },
+                    onChanged: _changePitch,
                   ),
                 ),
               ],
