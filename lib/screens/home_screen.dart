@@ -57,9 +57,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _ttsService.playbackError.addListener(_showTtsPlaybackError);
+  }
+
+  @override
   void dispose() {
+    _ttsService.playbackError.removeListener(_showTtsPlaybackError);
     _ttsService.dispose();
     super.dispose();
+  }
+
+  void _showTtsPlaybackError() {
+    final message = _ttsService.playbackError.value;
+    if (message == null || !mounted) {
+      return;
+    }
+
+    _showSnackBar(message);
+    _ttsService.clearPlaybackError();
   }
 
   Future<void> _selectExcelFile() async {
