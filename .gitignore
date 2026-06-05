@@ -9,3 +9,7 @@ coverage/
 *.iml
 .idea/
 .vscode/
+
+# Local build/debug logs
+debug_build_log.txt
+*_build_log.txt

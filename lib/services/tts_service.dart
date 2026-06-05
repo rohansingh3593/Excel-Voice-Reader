@@ -37,12 +37,7 @@ class _TtsQueueItem {
 
 class TtsService {
   TtsService() {
-    // Ensure platform TTS awaits completion so we can sequence items
-    if (!Platform.isWindows) {
-      try {
-        _tts.awaitSpeakCompletion(true);
-      } catch (_) {}
-    }
+    _configuration = _configurePlatformTts();
   }
 
   static const List<AccentOption> accents = [
@@ -52,15 +47,20 @@ class TtsService {
     AccentOption(label: 'English Australia', languageCode: 'en-AU'),
   ];
 
+  static const int _speechChunkSize = 3500;
+
   final FlutterTts _tts = FlutterTts();
   final List<_TtsQueueItem> _queue = [];
   _TtsQueueItem? _currentItem;
   _TtsQueueItem? _pausedItem;
   bool _isProcessingQueue = false;
+  int _speechGeneration = 0;
+  late final Future<void> _configuration;
   Process? _windowsProcess;
 
   // Expose queue length for UI
   final ValueNotifier<int> queueLength = ValueNotifier<int>(0);
+  final ValueNotifier<String?> playbackError = ValueNotifier<String?>(null);
 
   Future<void> speak({
     required String text,
@@ -105,6 +105,7 @@ class TtsService {
     }
 
     try {
+      await _configuration;
       await _tts.pause();
     } catch (_) {}
   }
@@ -122,7 +123,7 @@ class TtsService {
     }
 
     try {
-      await _tts.awaitSpeakCompletion(true);
+      await _configuration;
       // FlutterTTS does not guarantee a resume API across platforms.
       // If the plugin supports resume, call it here. Otherwise re-speak.
       await _tts.setVolume(1.0);
@@ -131,6 +132,7 @@ class TtsService {
 
   /// Skip current item and move to next.
   Future<void> skip() async {
+    _speechGeneration++;
     if (Platform.isWindows) {
       try {
         _windowsProcess?.kill();
@@ -140,12 +142,14 @@ class TtsService {
     }
 
     try {
+      await _configuration;
       await _tts.stop();
     } catch (_) {}
   }
 
   /// Stop and clear the queue.
   Future<void> stop() async {
+    _speechGeneration++;
     _queue.clear();
     queueLength.value = 0;
     _pausedItem = null;
@@ -159,6 +163,7 @@ class TtsService {
     }
 
     try {
+      await _configuration;
       await _tts.stop();
     } catch (_) {}
   }
@@ -193,16 +198,17 @@ class TtsService {
             pitch: item.pitch,
           );
         } else {
-          await _setLanguageWithFallback(item.accent.languageCode);
-          await _tts.setSpeechRate(item.speed.rate);
-          await _tts.setPitch(item.pitch);
-          await _tts.setVolume(1.0);
-          debugPrint('TtsService._processQueue() calling _tts.speak()');
-          await _tts.speak(item.text);
+          await _speakWithPlatformTts(
+            item: item,
+            generation: _speechGeneration,
+          );
         }
       } catch (e, s) {
         debugPrint('TTS queue item failed: $e');
         debugPrintStack(stackTrace: s);
+        _reportPlaybackError(
+          'Unable to play audio. Check your phone media volume and Text-to-Speech voice data.',
+        );
       }
       _currentItem = null;
     }
@@ -210,9 +216,122 @@ class TtsService {
     debugPrint('TtsService._processQueue() completed');
   }
 
+  void clearPlaybackError() {
+    playbackError.value = null;
+  }
+
   Future<void> dispose() async {
     await stop();
     queueLength.dispose();
+    playbackError.dispose();
+  }
+
+  void _reportPlaybackError(String message) {
+    playbackError.value = null;
+    playbackError.value = message;
+  }
+
+  Future<void> _configurePlatformTts() async {
+    if (Platform.isWindows) {
+      return;
+    }
+
+    try {
+      await _tts.awaitSpeakCompletion(true);
+    } catch (error) {
+      debugPrint('TtsService: failed to enable speak completion: $error');
+    }
+
+    if (Platform.isAndroid) {
+      try {
+        // Keep chunks in the native Android TTS queue instead of letting a
+        // later chunk flush an earlier one on engines that return early.
+        await (_tts as dynamic).setQueueMode(1);
+      } catch (error) {
+        debugPrint('TtsService: failed to set Android queue mode: $error');
+      }
+    }
+  }
+
+  Future<void> _speakWithPlatformTts({
+    required _TtsQueueItem item,
+    required int generation,
+  }) async {
+    await _configuration;
+    await _setLanguageWithFallback(item.accent.languageCode);
+    await _tts.setSpeechRate(item.speed.rate);
+    await _tts.setPitch(item.pitch);
+    await _tts.setVolume(1.0);
+
+    final chunks = _splitTextForSpeech(item.text);
+    debugPrint(
+      'TtsService._speakWithPlatformTts() speaking ${chunks.length} chunk(s)',
+    );
+
+    for (var index = 0; index < chunks.length; index++) {
+      if (generation != _speechGeneration) {
+        debugPrint('TtsService._speakWithPlatformTts() cancelled');
+        break;
+      }
+
+      final chunk = chunks[index];
+      debugPrint(
+        'TtsService._speakWithPlatformTts() chunk ${index + 1}/${chunks.length} '
+        '(length=${chunk.length})',
+      );
+      final result = await _tts.speak(chunk);
+      if (result == 0 || result == false) {
+        throw StateError(
+          'The text-to-speech engine rejected the speech request.',
+        );
+      }
+    }
+  }
+
+  List<String> _splitTextForSpeech(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return const [];
+    }
+
+    final chunks = <String>[];
+    var remaining = trimmed;
+    while (remaining.length > _speechChunkSize) {
+      final splitIndex = _bestSpeechSplitIndex(remaining, _speechChunkSize);
+      final chunk = remaining.substring(0, splitIndex).trim();
+      if (chunk.isNotEmpty) {
+        chunks.add(chunk);
+      }
+      remaining = remaining.substring(splitIndex).trimLeft();
+    }
+
+    if (remaining.trim().isNotEmpty) {
+      chunks.add(remaining.trim());
+    }
+    return chunks;
+  }
+
+  int _bestSpeechSplitIndex(String text, int maxLength) {
+    final preferredBoundaries = [
+      '\n\n',
+      '. ',
+      '! ',
+      '? ',
+      '\n',
+      '; ',
+      ', ',
+      ' ',
+    ];
+    final minimumUsefulSplit = (maxLength * 0.55).round();
+
+    for (final boundary in preferredBoundaries) {
+      final boundaryIndex = text.lastIndexOf(boundary, maxLength);
+      if (boundaryIndex >= minimumUsefulSplit) {
+        return boundaryIndex + boundary.length;
+      }
+    }
+
+    return maxLength;
   }
 
   Future<void> _setLanguageWithFallback(String languageCode) async {
