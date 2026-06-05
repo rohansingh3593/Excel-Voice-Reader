@@ -46,6 +46,198 @@ class TopicPlaylist {
   }
 }
 
+class ReadingViewScreen extends StatefulWidget {
+  const ReadingViewScreen({
+    super.key,
+    required this.topicTitle,
+    required this.sourceLabel,
+    required this.segments,
+    required this.highlightedIndex,
+    required this.progress,
+    required this.elapsedLabel,
+    required this.remainingLabel,
+    required this.settingsLabel,
+    required this.onSeekBackward10,
+    required this.onSeekForward10,
+    required this.onSeekBackward30,
+    required this.onSeekForward30,
+    required this.onPreviousTopic,
+    required this.onNextTopic,
+    required this.onPause,
+    required this.onResume,
+  });
+
+  final String topicTitle;
+  final String sourceLabel;
+  final List<String> segments;
+  final ValueNotifier<int> highlightedIndex;
+  final ValueNotifier<double> progress;
+  final String Function() elapsedLabel;
+  final String Function() remainingLabel;
+  final String settingsLabel;
+  final Future<void> Function() onSeekBackward10;
+  final Future<void> Function() onSeekForward10;
+  final Future<void> Function() onSeekBackward30;
+  final Future<void> Function() onSeekForward30;
+  final Future<void> Function() onPreviousTopic;
+  final Future<void> Function() onNextTopic;
+  final Future<void> Function() onPause;
+  final Future<void> Function() onResume;
+
+  @override
+  State<ReadingViewScreen> createState() => _ReadingViewScreenState();
+}
+
+class _ReadingViewScreenState extends State<ReadingViewScreen> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.highlightedIndex.addListener(_scrollToHighlighted);
+  }
+
+  @override
+  void dispose() {
+    widget.highlightedIndex.removeListener(_scrollToHighlighted);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToHighlighted() {
+    if (!_scrollController.hasClients || widget.segments.isEmpty) {
+      return;
+    }
+
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final ratio = widget.segments.length <= 1
+        ? 0.0
+        : widget.highlightedIndex.value / (widget.segments.length - 1);
+    final target = (maxScroll * ratio).clamp(0, maxScroll).toDouble();
+    unawaited(_scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Reading View')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.topicTitle,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(widget.sourceLabel, style: const TextStyle(color: Color(0xFF64748B))),
+              const SizedBox(height: 14),
+              ValueListenableBuilder<double>(
+                valueListenable: widget.progress,
+                builder: (context, progress, child) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(value: progress.clamp(0, 1).toDouble()),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Progress: ${(progress * 100).round()}% • ${widget.elapsedLabel()} elapsed • ${widget.remainingLabel()} remaining',
+                        style: const TextStyle(color: Color(0xFF475569)),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              Text(widget.settingsLabel, style: const TextStyle(color: Color(0xFF475569))),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(onPressed: () => unawaited(widget.onSeekBackward30()), child: const Text('-30s')),
+                  OutlinedButton(onPressed: () => unawaited(widget.onSeekBackward10()), child: const Text('-10s')),
+                  FilledButton.tonalIcon(
+                    onPressed: () => unawaited(widget.onPause()),
+                    icon: const Icon(Icons.pause_rounded),
+                    label: const Text('Pause'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => unawaited(widget.onResume()),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Resume'),
+                  ),
+                  OutlinedButton(onPressed: () => unawaited(widget.onSeekForward10()), child: const Text('+10s')),
+                  OutlinedButton(onPressed: () => unawaited(widget.onSeekForward30()), child: const Text('+30s')),
+                  OutlinedButton.icon(
+                    onPressed: () => unawaited(widget.onPreviousTopic()),
+                    icon: const Icon(Icons.skip_previous_rounded),
+                    label: const Text('Previous Topic'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => unawaited(widget.onNextTopic()),
+                    icon: const Icon(Icons.skip_next_rounded),
+                    label: const Text('Next Topic'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Currently Reading',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ValueListenableBuilder<int>(
+                  valueListenable: widget.highlightedIndex,
+                  builder: (context, highlightedIndex, child) {
+                    return ListView.builder(
+                      controller: _scrollController,
+                      itemCount: widget.segments.length,
+                      itemBuilder: (context, index) {
+                        final isHighlighted = index == highlightedIndex;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          margin: const EdgeInsets.symmetric(vertical: 5),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isHighlighted
+                                ? const Color(0xFFFEF3C7)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            border: isHighlighted
+                                ? Border.all(color: const Color(0xFFF59E0B))
+                                : null,
+                          ),
+                          child: Text(
+                            widget.segments[index],
+                            style: TextStyle(
+                              fontSize: 17,
+                              height: 1.4,
+                              fontWeight:
+                                  isHighlighted ? FontWeight.w700 : FontWeight.w400,
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -74,6 +266,17 @@ class _HomeScreenState extends State<HomeScreen> {
   TopicPlaybackItem? _nowPlaying;
   List<TopicPlaybackItem> _playbackQueue = const <TopicPlaybackItem>[];
   final Map<String, TopicPlaylist> _playlists = <String, TopicPlaylist>{};
+  final ScrollController _readingScrollController = ScrollController();
+  final ValueNotifier<int> _highlightedSegmentNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<double> _readingProgressNotifier = ValueNotifier<double>(0);
+  Timer? _readingProgressTimer;
+  List<String> _readingSegments = const <String>[];
+  List<double> _segmentStartSeconds = const <double>[];
+  double _estimatedDurationSeconds = 0;
+  double _currentPlaybackSeconds = 0;
+  int _highlightedSegmentIndex = 0;
+  bool _isReadingPaused = false;
+  final List<TopicPlaybackItem> _topicHistory = <TopicPlaybackItem>[];
 
   List<ExcelRowData> get _sheetRows {
     final workbook = _workbook;
@@ -118,6 +321,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _readingProgressTimer?.cancel();
+    _readingScrollController.dispose();
+    _highlightedSegmentNotifier.dispose();
+    _readingProgressNotifier.dispose();
     _ttsService.playbackError.removeListener(_showTtsPlaybackError);
     _ttsService.dispose();
     super.dispose();
@@ -257,10 +464,20 @@ class _HomeScreenState extends State<HomeScreen> {
     await _playTopicNow(item);
   }
 
-  Future<void> _playTopicNow(TopicPlaybackItem item) async {
+  Future<void> _playTopicNow(
+    TopicPlaybackItem item, {
+    int startSegmentIndex = 0,
+    bool rememberCurrent = true,
+  }) async {
+    final current = _nowPlaying;
+    if (rememberCurrent && current != null && current.id != item.id) {
+      _topicHistory.add(current);
+    }
+
     final playbackRequestId = ++_topicPlaybackRequestId;
     debugPrint('DEBUG: Play Now topic=${item.topic}, keyword=${item.keyword}');
 
+    _stopReadingProgressTimer();
     await _ttsService.stop();
     _ttsService.clearQueue();
 
@@ -274,28 +491,34 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedRow = item.rows.isNotEmpty ? item.rows.first : null;
     });
 
-    await _speakTopicItem(item, playbackRequestId);
+    await _speakTopicItem(
+      item,
+      playbackRequestId,
+      startSegmentIndex: startSegmentIndex,
+    );
   }
 
   Future<void> _speakTopicItem(
     TopicPlaybackItem item,
-    int playbackRequestId,
-  ) async {
-    final text = item.rows
-        .map((row) => _buildReadableContent(row.content))
-        .where((content) => content.trim().isNotEmpty)
-        .join('\n\n');
-    debugPrint('DEBUG: Prepared topic text (length=${text.length})');
-
-    if (text.trim().isEmpty) {
+    int playbackRequestId, {
+    int startSegmentIndex = 0,
+  }) async {
+    final segments = _segmentsForTopic(item);
+    if (segments.isEmpty) {
       _showSnackBar('Selected topic has no readable content.');
       return;
     }
+
+    final safeStartIndex = startSegmentIndex.clamp(0, segments.length - 1).toInt();
+    _prepareReadingProgress(segments, safeStartIndex);
+    final text = segments.skip(safeStartIndex).join('\n\n');
+    debugPrint('DEBUG: Prepared topic text (length=${text.length})');
 
     if (!mounted || playbackRequestId != _topicPlaybackRequestId) {
       return;
     }
 
+    _startReadingProgressTimer(playbackRequestId);
     await _ttsService.speak(
       text: text,
       accent: _selectedAccent,
@@ -308,10 +531,170 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    _stopReadingProgressTimer(markComplete: true);
     setState(() {
       _nowPlaying = null;
     });
     await _playNextQueued();
+  }
+
+  List<String> _segmentsForTopic(TopicPlaybackItem item) {
+    return item.rows
+        .expand((row) => _splitReadableSegments(_buildReadableContent(row.content)))
+        .where((segment) => segment.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<String> _splitReadableSegments(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return const <String>[];
+    }
+
+    final paragraphSegments = normalized
+        .split(RegExp(r'\n{2,}'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (paragraphSegments.length > 1) {
+      return paragraphSegments;
+    }
+
+    final sentenceMatches = RegExp(r'[^.!?]+[.!?]+|[^.!?]+$')
+        .allMatches(normalized)
+        .map((match) => match.group(0)?.trim() ?? '')
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    return sentenceMatches.isEmpty ? <String>[normalized] : sentenceMatches;
+  }
+
+  void _prepareReadingProgress(List<String> segments, int startIndex) {
+    _readingSegments = segments;
+    _segmentStartSeconds = _buildSegmentStartSeconds(segments);
+    _estimatedDurationSeconds = _estimateTotalDuration(segments);
+    _highlightedSegmentIndex = startIndex;
+    _currentPlaybackSeconds = _secondsForSegmentIndex(startIndex);
+    _isReadingPaused = false;
+    _publishReadingProgress();
+  }
+
+  List<double> _buildSegmentStartSeconds(List<String> segments) {
+    final starts = <double>[];
+    var elapsed = 0.0;
+    for (final segment in segments) {
+      starts.add(elapsed);
+      elapsed += _estimateSegmentDuration(segment);
+    }
+    return starts;
+  }
+
+  double _estimateTotalDuration(List<String> segments) {
+    return segments.fold<double>(
+      0,
+      (total, segment) => total + _estimateSegmentDuration(segment),
+    );
+  }
+
+  double _estimateSegmentDuration(String segment) {
+    final words = segment.split(RegExp(r'\s+')).where((word) => word.isNotEmpty).length;
+    final wordsPerSecond = (2.4 * _selectedSpeed.rate).clamp(1.2, 4.5).toDouble();
+    return (words / wordsPerSecond).clamp(1.5, 12.0).toDouble();
+  }
+
+  double _secondsForSegmentIndex(int index) {
+    if (_segmentStartSeconds.isEmpty) {
+      return 0;
+    }
+    return _segmentStartSeconds[index.clamp(0, _segmentStartSeconds.length - 1).toInt()];
+  }
+
+  int _segmentIndexForSeconds(double seconds) {
+    if (_segmentStartSeconds.isEmpty) {
+      return 0;
+    }
+
+    for (var index = _segmentStartSeconds.length - 1; index >= 0; index--) {
+      if (seconds >= _segmentStartSeconds[index]) {
+        return index;
+      }
+    }
+    return 0;
+  }
+
+  void _startReadingProgressTimer(int playbackRequestId) {
+    _readingProgressTimer?.cancel();
+    _readingProgressTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted || playbackRequestId != _topicPlaybackRequestId || _isReadingPaused) {
+        return;
+      }
+
+      _currentPlaybackSeconds = (_currentPlaybackSeconds + 0.5)
+          .clamp(0, _estimatedDurationSeconds)
+          .toDouble();
+      _highlightedSegmentIndex = _segmentIndexForSeconds(_currentPlaybackSeconds);
+      _publishReadingProgress();
+    });
+  }
+
+  void _stopReadingProgressTimer({bool markComplete = false}) {
+    _readingProgressTimer?.cancel();
+    _readingProgressTimer = null;
+    if (markComplete && _estimatedDurationSeconds > 0) {
+      _currentPlaybackSeconds = _estimatedDurationSeconds;
+      _readingProgressNotifier.value = 1;
+    }
+  }
+
+  void _publishReadingProgress() {
+    _highlightedSegmentNotifier.value = _highlightedSegmentIndex;
+    _readingProgressNotifier.value = _estimatedDurationSeconds <= 0
+        ? 0
+        : (_currentPlaybackSeconds / _estimatedDurationSeconds).clamp(0, 1).toDouble();
+    _scrollHighlightedSegmentIntoView();
+  }
+
+  void _scrollHighlightedSegmentIntoView() {
+    if (!_readingScrollController.hasClients || _readingSegments.isEmpty) {
+      return;
+    }
+
+    final maxScroll = _readingScrollController.position.maxScrollExtent;
+    final ratio = _readingSegments.length <= 1
+        ? 0.0
+        : _highlightedSegmentIndex / (_readingSegments.length - 1);
+    final target = (maxScroll * ratio).clamp(0, maxScroll).toDouble();
+    unawaited(_readingScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    ));
+  }
+
+  Future<void> _seekBySeconds(int seconds) async {
+    final item = _nowPlaying;
+    if (item == null || _readingSegments.isEmpty) {
+      return;
+    }
+
+    final targetSeconds = (_currentPlaybackSeconds + seconds)
+        .clamp(0, _estimatedDurationSeconds)
+        .toDouble();
+    final targetIndex = _segmentIndexForSeconds(targetSeconds);
+    await _playTopicNow(
+      item,
+      startSegmentIndex: targetIndex,
+      rememberCurrent: false,
+    );
+  }
+
+  Future<void> _playPreviousTopic() async {
+    if (_topicHistory.isEmpty) {
+      _showSnackBar('No previous topic.');
+      return;
+    }
+
+    final previous = _topicHistory.removeLast();
+    await _playTopicNow(previous, rememberCurrent: false);
   }
 
   Future<void> _addTopicToQueue(TopicPlaybackItem item) async {
@@ -581,11 +964,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _pauseSpeech() async {
+    _isReadingPaused = true;
     await _ttsService.pause();
   }
 
   Future<void> _stopSpeech() async {
     _topicPlaybackRequestId++;
+    _stopReadingProgressTimer();
     await _ttsService.stop();
     if (!mounted) {
       return;
@@ -596,11 +981,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _resumeSpeech() async {
+    _isReadingPaused = false;
     await _ttsService.resume();
   }
 
   Future<void> _skipToNextTopic() async {
     _topicPlaybackRequestId++;
+    _stopReadingProgressTimer();
     await _ttsService.stop();
     if (!mounted) {
       return;
@@ -943,6 +1330,115 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildReadingProgressSummary() {
+    return ValueListenableBuilder<double>(
+      valueListenable: _readingProgressNotifier,
+      builder: (context, progress, child) {
+        final elapsed = _formatDuration(_currentPlaybackSeconds);
+        final remaining = _formatDuration(
+          (_estimatedDurationSeconds - _currentPlaybackSeconds).clamp(0, double.infinity).toDouble(),
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            LinearProgressIndicator(value: progress.clamp(0, 1).toDouble()),
+            const SizedBox(height: 6),
+            Text(
+              'Progress: ${(progress * 100).round()}% • $elapsed elapsed • $remaining remaining',
+              style: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildHighlightedReadingText({ScrollController? controller}) {
+    if (_readingSegments.isEmpty) {
+      return const Text('No reading content available yet.');
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: _highlightedSegmentNotifier,
+      builder: (context, highlightedIndex, child) {
+        return ListView.builder(
+          controller: controller,
+          shrinkWrap: controller == null,
+          physics: controller == null ? const NeverScrollableScrollPhysics() : null,
+          itemCount: _readingSegments.length,
+          itemBuilder: (context, index) {
+            final isHighlighted = index == highlightedIndex;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isHighlighted ? const Color(0xFFFEF3C7) : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: isHighlighted
+                    ? Border.all(color: const Color(0xFFF59E0B))
+                    : null,
+              ),
+              child: Text(
+                _readingSegments[index],
+                style: TextStyle(
+                  fontSize: 16,
+                  height: 1.35,
+                  fontWeight: isHighlighted ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openReadingView() async {
+    final item = _nowPlaying;
+    if (item == null) {
+      _showSnackBar('Play a topic before opening Reading View.');
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ReadingViewScreen(
+          topicTitle: item.topic,
+          sourceLabel:
+              '${item.sheetName} • ${item.keyword}${item.playlistName == null ? '' : ' • Playlist: ${item.playlistName}'}',
+          segments: _readingSegments,
+          highlightedIndex: _highlightedSegmentNotifier,
+          progress: _readingProgressNotifier,
+          elapsedLabel: () => _formatDuration(_currentPlaybackSeconds),
+          remainingLabel: () => _formatDuration(
+            (_estimatedDurationSeconds - _currentPlaybackSeconds).clamp(0, double.infinity).toDouble(),
+          ),
+          settingsLabel:
+              'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Voice: ${_selectedVoiceStyle.label}',
+          onSeekBackward10: () => _seekBySeconds(-10),
+          onSeekForward10: () => _seekBySeconds(10),
+          onSeekBackward30: () => _seekBySeconds(-30),
+          onSeekForward30: () => _seekBySeconds(30),
+          onPreviousTopic: _playPreviousTopic,
+          onNextTopic: _skipToNextTopic,
+          onPause: _pauseSpeech,
+          onResume: _resumeSpeech,
+        ),
+      ),
+    );
+  }
+
+  String _formatDuration(double seconds) {
+    final duration = Duration(seconds: seconds.round());
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final secs = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (duration.inHours > 0) {
+      return '${duration.inHours}:$minutes:$secs';
+    }
+    return '$minutes:$secs';
+  }
+
   Widget _buildNowPlayingDashboard() {
     final item = _nowPlaying;
     final content = item == null
@@ -993,12 +1489,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFCBD5E1)),
               ),
-              child: SingleChildScrollView(
-                child: Text(
-                  content.isEmpty ? '—' : content,
-                  maxLines: null,
-                ),
-              ),
+              child: item == null
+                  ? Text(content.isEmpty ? '—' : content)
+                  : _buildHighlightedReadingText(
+                      controller: _readingScrollController,
+                    ),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -1031,6 +1526,47 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Next'),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _playPreviousTopic,
+                  icon: const Icon(Icons.skip_previous_rounded),
+                  label: const Text('Previous Topic'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _seekBySeconds(-30),
+                  child: const Text('-30s'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _seekBySeconds(-10),
+                  child: const Text('-10s'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _seekBySeconds(10),
+                  child: const Text('+10s'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _seekBySeconds(30),
+                  child: const Text('+30s'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _skipToNextTopic,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Next Topic'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildReadingProgressSummary(),
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: _readingSegments.isEmpty ? null : _openReadingView,
+              icon: const Icon(Icons.menu_book_rounded),
+              label: const Text('Open Reading View'),
             ),
             const SizedBox(height: 10),
             Text(
