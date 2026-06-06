@@ -72,6 +72,7 @@ class TtsService {
   ];
 
   static const int _speechChunkSize = 3500;
+  static const int _hindiSpeechChunkSize = 180;
   static const String _hindiLanguageCode = 'hi-IN';
   static final RegExp _hindiRegex = RegExp(r'[\u0900-\u097F]');
   static final RegExp _speakableTextRegex = RegExp(
@@ -89,8 +90,10 @@ class TtsService {
   _TtsQueueItem? _pausedItem;
   bool _isProcessingQueue = false;
   int _speechGeneration = 0;
+  int _queueProcessorRunId = 0;
   late final Future<void> _configuration;
   Process? _windowsProcess;
+  File? _windowsStopSignalFile;
 
   // Expose queue length for UI
   final ValueNotifier<int> queueLength = ValueNotifier<int>(0);
@@ -182,10 +185,8 @@ class TtsService {
       if (_currentItem != null) {
         _pausedItem = _currentItem;
       }
-      try {
-        _windowsProcess?.kill();
-      } catch (_) {}
-      _windowsProcess = null;
+      _signalWindowsPlaybackStop();
+      _queueProcessorRunId++;
       _isProcessingQueue = false;
       return;
     }
@@ -220,10 +221,7 @@ class TtsService {
   Future<void> skip() async {
     _speechGeneration++;
     if (Platform.isWindows) {
-      try {
-        _windowsProcess?.kill();
-      } catch (_) {}
-      _windowsProcess = null;
+      _signalWindowsPlaybackStop();
       return;
     }
 
@@ -236,6 +234,10 @@ class TtsService {
   /// Stop and clear the queue.
   Future<void> stop() async {
     _speechGeneration++;
+    if (_currentItem != null && !_currentItem!.completion.isCompleted) {
+      _currentItem!.completion.complete();
+    }
+    _queueProcessorRunId++;
     for (final item in _queue) {
       if (!item.completion.isCompleted) {
         item.completion.complete();
@@ -246,10 +248,7 @@ class TtsService {
     _currentItem = null;
     _pausedItem = null;
     if (Platform.isWindows) {
-      try {
-        _windowsProcess?.kill();
-      } catch (_) {}
-      _windowsProcess = null;
+      _signalWindowsPlaybackStop();
       _isProcessingQueue = false;
       return;
     }
@@ -276,47 +275,76 @@ class TtsService {
       debugPrint('TtsService._processQueue() already processing, skipping');
       return;
     }
+
+    final processorRunId = ++_queueProcessorRunId;
     debugPrint(
         'TtsService._processQueue() starting, queue length=${_queue.length}');
     _isProcessingQueue = true;
-    while (_queue.isNotEmpty) {
-      final item = _queue.removeAt(0);
-      queueLength.value = _queue.length;
-      _currentItem = item;
-      debugPrint(
-          'TtsService._processQueue() processing item (text length=${item.text.length})');
-      try {
-        if (Platform.isWindows) {
-          debugPrint('TtsService._processQueue() using Windows SAPI');
-          await _speakWithWindowsSapi(
-            text: item.text,
-            accent: item.accent,
-            speed: item.speed,
-            pitch: item.pitch,
-            voiceStyle: item.voiceStyle,
-            generation: _speechGeneration,
+    try {
+      while (_queue.isNotEmpty && processorRunId == _queueProcessorRunId) {
+        final item = _queue.removeAt(0);
+        queueLength.value = _queue.length;
+        _currentItem = item;
+        final itemGeneration = _speechGeneration;
+        debugPrint(
+            'TtsService._processQueue() processing item (text length=${item.text.length})');
+        try {
+          if (Platform.isWindows) {
+            debugPrint('TtsService._processQueue() using Windows SAPI');
+            await _speakWithWindowsSapi(
+              text: item.text,
+              accent: item.accent,
+              speed: item.speed,
+              pitch: item.pitch,
+              voiceStyle: item.voiceStyle,
+              generation: itemGeneration,
+            );
+          } else {
+            await _speakWithPlatformTts(
+              item: item,
+              generation: itemGeneration,
+            );
+          }
+        } catch (e, s) {
+          debugPrint('TTS queue item failed: $e');
+          debugPrintStack(stackTrace: s);
+          _reportPlaybackError(
+            'Unable to play audio. Check your phone media volume and Text-to-Speech voice data.',
           );
-        } else {
-          await _speakWithPlatformTts(
-            item: item,
-            generation: _speechGeneration,
-          );
+        } finally {
+          if (!item.completion.isCompleted) {
+            item.completion.complete();
+          }
         }
-      } catch (e, s) {
-        debugPrint('TTS queue item failed: $e');
-        debugPrintStack(stackTrace: s);
-        _reportPlaybackError(
-          'Unable to play audio. Check your phone media volume and Text-to-Speech voice data.',
-        );
-      } finally {
-        if (!item.completion.isCompleted) {
-          item.completion.complete();
+        if (identical(_currentItem, item)) {
+          _currentItem = null;
+        }
+        if (itemGeneration != _speechGeneration) {
+          debugPrint('TtsService._processQueue() cancelled after item');
+          break;
         }
       }
-      _currentItem = null;
+    } finally {
+      if (processorRunId == _queueProcessorRunId) {
+        _isProcessingQueue = false;
+      }
+      debugPrint('TtsService._processQueue() completed');
     }
-    _isProcessingQueue = false;
-    debugPrint('TtsService._processQueue() completed');
+  }
+
+  void _signalWindowsPlaybackStop() {
+    try {
+      _windowsStopSignalFile?.writeAsStringSync('stop', flush: true);
+    } catch (error) {
+      debugPrint('TtsService: failed to write Windows stop signal: $error');
+    }
+
+    try {
+      _windowsProcess?.kill();
+    } catch (error) {
+      debugPrint('TtsService: failed to kill Windows TTS process: $error');
+    }
+    _windowsProcess = null;
   }
 
   void clearPlaybackError() {
@@ -429,7 +457,10 @@ class TtsService {
     for (final unit in units) {
       final isHindi = _isHindiText(unit);
       final languageCode = isHindi ? _hindiLanguageCode : englishLanguageCode;
-      final splitUnits = _splitTextForSpeech(unit);
+      final splitUnits = _splitTextForSpeech(
+        unit,
+        maxLength: isHindi ? _hindiSpeechChunkSize : _speechChunkSize,
+      );
       for (final splitUnit in splitUnits) {
         if (!_hasSpeakableText(splitUnit)) {
           if (chunks.isNotEmpty) {
@@ -491,7 +522,10 @@ class TtsService {
     return _speakableTextRegex.hasMatch(text);
   }
 
-  List<String> _splitTextForSpeech(String text) {
+  List<String> _splitTextForSpeech(
+    String text, {
+    int maxLength = _speechChunkSize,
+  }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
       return const [];
@@ -499,8 +533,8 @@ class TtsService {
 
     final chunks = <String>[];
     var remaining = trimmed;
-    while (remaining.length > _speechChunkSize) {
-      final splitIndex = _bestSpeechSplitIndex(remaining, _speechChunkSize);
+    while (remaining.length > maxLength) {
+      final splitIndex = _bestSpeechSplitIndex(remaining, maxLength);
       final chunk = remaining.substring(0, splitIndex).trim();
       if (chunk.isNotEmpty) {
         chunks.add(chunk);
@@ -945,6 +979,9 @@ class TtsService {
     final scriptFile = File(
       '${tempDir.path}${Platform.pathSeparator}flutter_tts_$timestamp.ps1',
     );
+    final stopSignalFile = File(
+      '${tempDir.path}${Platform.pathSeparator}flutter_tts_stop_$timestamp.signal',
+    );
 
     await textFile.writeAsString(text, encoding: utf8);
     debugPrint('_speakWithWindowsSapi wrote text file: ${textFile.path}');
@@ -954,11 +991,13 @@ class TtsService {
       speed: speed,
       pitch: pitch,
       voiceStyle: voiceStyle,
+      stopSignalFilePath: stopSignalFile.path,
     );
     await scriptFile.writeAsString(script, encoding: utf8);
     debugPrint('_speakWithWindowsSapi wrote script file: ${scriptFile.path}');
 
     try {
+      _windowsStopSignalFile = stopSignalFile;
       Process process;
       try {
         debugPrint('_speakWithWindowsSapi starting powershell.exe');
@@ -1030,6 +1069,10 @@ class TtsService {
       debugPrint('Windows TTS Error: $e');
       debugPrintStack(stackTrace: stack);
     } finally {
+      if (identical(_windowsStopSignalFile, stopSignalFile)) {
+        _windowsStopSignalFile = null;
+      }
+      await stopSignalFile.delete().catchError((_) {});
       await scriptFile.delete().catchError((_) {});
       await textFile.delete().catchError((_) {});
     }
@@ -1041,11 +1084,14 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required String stopSignalFilePath,
   }) {
     final escapedTextFilePath =
         _escapePowerShellSingleQuotedString(textFilePath);
     final escapedLanguage =
         _escapePowerShellSingleQuotedString(languageCode);
+    final escapedStopSignalFilePath =
+        _escapePowerShellSingleQuotedString(stopSignalFilePath);
     final windowsRate = _windowsRateFor(speed);
     final windowsPitch = _windowsPitchPercentFor(pitch);
     final preferredGender = _windowsGenderFilterFor(voiceStyle);
@@ -1053,6 +1099,21 @@ class TtsService {
     return '''
 \$ErrorActionPreference = 'Stop';
 \$speaker = \$null;
+\$stopSignalFile = '$escapedStopSignalFilePath';
+function Test-FlutterTtsStopped {
+  return (Test-Path -LiteralPath \$stopSignalFile);
+}
+function Wait-FlutterTtsPlayback {
+  param([int]\$Milliseconds)
+  \$remaining = \$Milliseconds;
+  while (\$remaining -gt 0) {
+    if (Test-FlutterTtsStopped) { return \$false; }
+    \$sleep = [Math]::Min(100, \$remaining);
+    Start-Sleep -Milliseconds \$sleep;
+    \$remaining -= \$sleep;
+  }
+  return \$true;
+}
 try {
   Add-Type -AssemblyName System.Speech;
   \$rawText = Get-Content -Raw -Encoding UTF8 -LiteralPath '$escapedTextFilePath';
@@ -1069,6 +1130,7 @@ try {
   if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
   if (\$voice -eq \$null -and \$neutralCulture -eq 'hi') {
     Write-Output 'No local Hindi SAPI voice was found; using online Hindi TTS fallback.';
+    if (Test-FlutterTtsStopped) { return; }
     \$encodedText = [System.Uri]::EscapeDataString(\$rawText);
     \$audioFile = Join-Path ([System.IO.Path]::GetTempPath()) ("flutter_hindi_tts_\$([System.Guid]::NewGuid()).mp3");
     try {
@@ -1080,10 +1142,13 @@ try {
       for (\$i = 0; \$i -lt 50 -and -not \$player.NaturalDuration.HasTimeSpan; \$i++) { Start-Sleep -Milliseconds 100; }
       \$player.Volume = 1.0;
       \$player.Play();
-      if (\$player.NaturalDuration.HasTimeSpan) {
-        Start-Sleep -Milliseconds ([int]\$player.NaturalDuration.TimeSpan.TotalMilliseconds + 500);
+      \$waitMilliseconds = if (\$player.NaturalDuration.HasTimeSpan) {
+        [int]\$player.NaturalDuration.TimeSpan.TotalMilliseconds + 500
       } else {
-        Start-Sleep -Milliseconds ([Math]::Max(1500, \$rawText.Length * 90));
+        [Math]::Max(1500, \$rawText.Length * 90)
+      };
+      if (-not (Wait-FlutterTtsPlayback -Milliseconds \$waitMilliseconds)) {
+        \$player.Stop();
       }
       \$player.Close();
       return;
@@ -1091,6 +1156,7 @@ try {
       if (Test-Path \$audioFile) { Remove-Item -Force \$audioFile -ErrorAction SilentlyContinue; }
     }
   }
+  if (Test-FlutterTtsStopped) { return; }
   if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
   \$spokenCulture = \$speaker.Voice.Culture.Name;
   \$pitch = $windowsPitch;
