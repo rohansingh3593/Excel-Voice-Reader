@@ -374,7 +374,7 @@ class TtsService {
       }
 
       final chunk = chunks[index];
-      final speechRate = item.speed.rate;
+      final speechRate = _platformSpeechRateFor(item.speed);
       final speechPitch = item.pitch;
       debugPrint(
         'TtsService._speakWithPlatformTts() chunk ${index + 1}/${chunks.length} '
@@ -575,6 +575,7 @@ class TtsService {
     if (!voiceApplied) {
       await _tts.setLanguage(_hindiLanguageCode);
     }
+    await _tts.setVolume(1.0);
     await _tts.setSpeechRate(speechRate);
     await _tts.setPitch(speechPitch);
     return _tts.speak(cleanText);
@@ -597,6 +598,7 @@ class TtsService {
       languageCode: languageCode,
       voiceStyle: voiceStyle,
     );
+    await _tts.setVolume(1.0);
     await _tts.setSpeechRate(speechRate);
     await _tts.setPitch(speechPitch);
     return _tts.speak(cleanText);
@@ -660,6 +662,7 @@ class TtsService {
     return locale.contains('hi-in') ||
         locale == 'hi' ||
         locale.startsWith('hi-') ||
+        locale.contains('hin') ||
         name.contains('hindi') ||
         name.contains('hi-in') ||
         name.contains('swara') ||
@@ -1045,6 +1048,10 @@ try {
   if (\$speaker -ne \$null) { \$speaker.Dispose(); }
 }
 ''';
+  }
+
+  double _platformSpeechRateFor(SpeechSpeed speed) {
+    return speed.rate.clamp(0.1, 1.0).toDouble();
   }
 
   int _windowsRateFor(SpeechSpeed speed) {
