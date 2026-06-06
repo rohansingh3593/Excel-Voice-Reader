@@ -965,6 +965,7 @@ class TtsService {
         process = await Process.start(
           'powershell.exe',
           [
+            '-STA',
             '-NoProfile',
             '-NonInteractive',
             '-ExecutionPolicy',
@@ -978,6 +979,7 @@ class TtsService {
         process = await Process.start(
           'pwsh.exe',
           [
+            '-STA',
             '-NoProfile',
             '-NonInteractive',
             '-ExecutionPolicy',
@@ -1065,7 +1067,30 @@ try {
   \$voice = \$null;
   if ('$preferredGender' -ne '') { \$voice = \$voices | Where-Object { \$_.VoiceInfo.Gender.ToString() -eq '$preferredGender' } | Select-Object -First 1; }
   if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
-  if (\$voice -eq \$null -and \$neutralCulture -eq 'hi') { Write-Error 'No Hindi SAPI voice is installed for hi-IN.'; exit 2; }
+  if (\$voice -eq \$null -and \$neutralCulture -eq 'hi') {
+    Write-Output 'No local Hindi SAPI voice was found; using online Hindi TTS fallback.';
+    \$encodedText = [System.Uri]::EscapeDataString(\$rawText);
+    \$audioFile = Join-Path ([System.IO.Path]::GetTempPath()) ("flutter_hindi_tts_\$([System.Guid]::NewGuid()).mp3");
+    try {
+      \$url = "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=hi-IN&q=\$encodedText";
+      Invoke-WebRequest -Uri \$url -OutFile \$audioFile -UseBasicParsing -Headers @{ 'User-Agent' = 'Mozilla/5.0' };
+      Add-Type -AssemblyName PresentationCore;
+      \$player = New-Object System.Windows.Media.MediaPlayer;
+      \$player.Open([System.Uri]\$audioFile);
+      for (\$i = 0; \$i -lt 50 -and -not \$player.NaturalDuration.HasTimeSpan; \$i++) { Start-Sleep -Milliseconds 100; }
+      \$player.Volume = 1.0;
+      \$player.Play();
+      if (\$player.NaturalDuration.HasTimeSpan) {
+        Start-Sleep -Milliseconds ([int]\$player.NaturalDuration.TimeSpan.TotalMilliseconds + 500);
+      } else {
+        Start-Sleep -Milliseconds ([Math]::Max(1500, \$rawText.Length * 90));
+      }
+      \$player.Close();
+      return;
+    } finally {
+      if (Test-Path \$audioFile) { Remove-Item -Force \$audioFile -ErrorAction SilentlyContinue; }
+    }
+  }
   if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
   \$spokenCulture = \$speaker.Voice.Culture.Name;
   \$pitch = $windowsPitch;
