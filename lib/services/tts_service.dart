@@ -74,6 +74,10 @@ class TtsService {
   static const int _speechChunkSize = 3500;
   static const String _hindiLanguageCode = 'hi-IN';
   static final RegExp _hindiRegex = RegExp(r'[\u0900-\u097F]');
+  static final RegExp _speakableTextRegex = RegExp(
+    r'[\p{L}\p{N}]',
+    unicode: true,
+  );
   static const String _hindiVoiceInstallMessage =
       'No Hindi voice is installed on this device. Please install Speech '
       'Services by Google and download Hindi (India) voice data from '
@@ -374,6 +378,11 @@ class TtsService {
       }
 
       final chunk = chunks[index];
+      if (!_hasSpeakableText(chunk.text)) {
+        debugPrint('TtsService: skipping punctuation-only chunk: ${chunk.text}');
+        continue;
+      }
+
       final speechRate = _platformSpeechRateFor(item.speed);
       final speechPitch = item.pitch;
       debugPrint(
@@ -422,6 +431,18 @@ class TtsService {
       final languageCode = isHindi ? _hindiLanguageCode : englishLanguageCode;
       final splitUnits = _splitTextForSpeech(unit);
       for (final splitUnit in splitUnits) {
+        if (!_hasSpeakableText(splitUnit)) {
+          if (chunks.isNotEmpty) {
+            final previous = chunks.removeLast();
+            chunks.add(_SpeechTextChunk(
+              text: '${previous.text}${splitUnit.trim()}',
+              languageCode: previous.languageCode,
+              isHindi: previous.isHindi,
+            ));
+          }
+          continue;
+        }
+
         chunks.add(_SpeechTextChunk(
           text: splitUnit,
           languageCode: languageCode,
@@ -464,6 +485,10 @@ class TtsService {
 
   bool _isHindiText(String text) {
     return _hindiRegex.hasMatch(text);
+  }
+
+  bool _hasSpeakableText(String text) {
+    return _speakableTextRegex.hasMatch(text);
   }
 
   List<String> _splitTextForSpeech(String text) {
@@ -881,6 +906,13 @@ class TtsService {
       }
 
       final chunk = chunks[index];
+      if (!_hasSpeakableText(chunk.text)) {
+        debugPrint(
+          'TtsService: skipping punctuation-only Windows chunk: ${chunk.text}',
+        );
+        continue;
+      }
+
       _logSpeechChunk(
         originalText: chunk.text,
         isHindi: chunk.isHindi,
@@ -982,6 +1014,9 @@ class TtsService {
           debugPrint('Windows TTS playback was stopped.');
         } else {
           debugPrint('Windows TTS exited with code $exitCode: $stderrStr');
+          if (languageCode == _hindiLanguageCode) {
+            _reportPlaybackError(_hindiVoiceInstallMessage);
+          }
         }
       } else {
         if (stdoutStr.trim().isNotEmpty) {
@@ -1030,6 +1065,7 @@ try {
   \$voice = \$null;
   if ('$preferredGender' -ne '') { \$voice = \$voices | Where-Object { \$_.VoiceInfo.Gender.ToString() -eq '$preferredGender' } | Select-Object -First 1; }
   if (\$voice -eq \$null) { \$voice = \$voices | Select-Object -First 1; }
+  if (\$voice -eq \$null -and \$neutralCulture -eq 'hi') { Write-Error 'No Hindi SAPI voice is installed for hi-IN.'; exit 2; }
   if (\$voice -ne \$null) { \$speaker.SelectVoice(\$voice.VoiceInfo.Name); }
   \$spokenCulture = \$speaker.Voice.Culture.Name;
   \$pitch = $windowsPitch;
