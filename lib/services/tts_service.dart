@@ -74,6 +74,10 @@ class TtsService {
   static const int _speechChunkSize = 3500;
   static const String _hindiLanguageCode = 'hi-IN';
   static final RegExp _hindiRegex = RegExp(r'[\u0900-\u097F]');
+  static const String _hindiVoiceInstallMessage =
+      'No Hindi voice is installed on this device. Please install Speech '
+      'Services by Google and download Hindi (India) voice data from '
+      'Text-to-speech output settings.';
 
   final FlutterTts _tts = FlutterTts();
   final List<_TtsQueueItem> _queue = [];
@@ -547,6 +551,9 @@ class TtsService {
         _hindiLanguageCode,
       );
       debugPrint('TtsService: hi-IN language available: $available');
+      if (available == false || available == 0) {
+        _reportPlaybackError(_hindiVoiceInstallMessage);
+      }
     } catch (error) {
       debugPrint('TtsService: unable to check hi-IN availability: $error');
     }
@@ -604,6 +611,7 @@ class TtsService {
       debugPrint(
         'TtsService: no Hindi voice found; using hi-IN language setting',
       );
+      _reportPlaybackError(_hindiVoiceInstallMessage);
       await _tts.setLanguage(_hindiLanguageCode);
       return false;
     }
@@ -611,7 +619,10 @@ class TtsService {
     final selectedVoice = _preferredHindiVoice(hindiVoices);
     final ttsVoice = _voiceMapForTts(selectedVoice);
     if (ttsVoice == null) {
-      debugPrint('TtsService: Hindi voice is missing name/locale: $selectedVoice');
+      debugPrint(
+        'TtsService: Hindi voice is missing name/locale: $selectedVoice',
+      );
+      _reportPlaybackError(_hindiVoiceInstallMessage);
       await _tts.setLanguage(_hindiLanguageCode);
       return false;
     }
@@ -622,6 +633,7 @@ class TtsService {
       return true;
     } catch (error) {
       debugPrint('TtsService: failed to set Hindi voice $ttsVoice: $error');
+      _reportPlaybackError(_hindiVoiceInstallMessage);
       await _tts.setLanguage(_hindiLanguageCode);
       return false;
     }
@@ -654,7 +666,8 @@ class TtsService {
         name.contains('madhur') ||
         name.contains('हिन्दी') ||
         name.contains('हिंदी') ||
-        (name.contains('google') && (locale == 'hi' || locale.startsWith('hi-')));
+        (name.contains('google') &&
+            (locale == 'hi' || locale.startsWith('hi-')));
   }
 
   Future<void> _setLanguageWithFallback(String languageCode) async {
@@ -669,6 +682,7 @@ class TtsService {
       debugPrint(
         'TtsService: Hindi language unavailable; not falling back to an English voice',
       );
+      _reportPlaybackError(_hindiVoiceInstallMessage);
       return;
     }
 
@@ -703,7 +717,9 @@ class TtsService {
     try {
       final ttsVoice = _voiceMapForTts(selectedVoice);
       if (ttsVoice == null) {
-        debugPrint('TtsService: selected voice is missing name/locale: $selectedVoice');
+        debugPrint(
+          'TtsService: selected voice is missing name/locale: $selectedVoice',
+        );
         return;
       }
       await _tts.setVoice(ttsVoice);
@@ -726,7 +742,10 @@ class TtsService {
       return const <Map<String, String>>[];
     }
 
-    return voices.whereType<Map>().map(_stringVoiceMap).toList(growable: false);
+    return voices
+        .whereType<Map>()
+        .map(_stringVoiceMap)
+        .toList(growable: false);
   }
 
   Future<Map<String, String>?> _selectVoiceForStyle({
