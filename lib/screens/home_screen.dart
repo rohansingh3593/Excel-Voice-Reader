@@ -1662,7 +1662,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                   ),
                 ),
-                Chip(label: Text('Queue: ${_playbackQueue.length}')),
               ],
             ),
             const SizedBox(height: 12),
@@ -1694,37 +1693,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: item == null ? null : () => _playTopicNow(item),
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Play'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _pauseSpeech,
-                  icon: const Icon(Icons.pause_rounded),
-                  label: const Text('Pause'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _resumeSpeech,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Resume'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _stopSpeech,
-                  icon: const Icon(Icons.stop_rounded),
-                  label: const Text('Stop'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _skipToNextTopic,
-                  icon: const Icon(Icons.skip_next_rounded),
-                  label: const Text('Next'),
-                ),
-              ],
-            ),
+            _buildReadingProgressSummary(),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -1758,8 +1727,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            _buildReadingProgressSummary(),
             const SizedBox(height: 10),
             TextButton.icon(
               onPressed: _readingSegments.isEmpty ? null : _openReadingView,
