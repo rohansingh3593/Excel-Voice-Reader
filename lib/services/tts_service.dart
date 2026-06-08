@@ -23,9 +23,10 @@ enum SpeechSpeed {
 }
 
 enum VoiceStyle {
-  femaleSmooth('Female'),
+  defaultVoice('Default'),
+  femaleSmooth('Female Smooth'),
   male('Male'),
-  defaultVoice('Default');
+  natural('Natural');
 
   const VoiceStyle(this.label);
   final String label;
@@ -70,6 +71,7 @@ class TtsService {
     AccentOption(label: 'English India', languageCode: 'en-IN'),
     AccentOption(label: 'English UK', languageCode: 'en-GB'),
     AccentOption(label: 'English Australia', languageCode: 'en-AU'),
+    AccentOption(label: 'Hindi India', languageCode: 'hi-IN'),
   ];
 
   static const int _speechChunkSize = 3500;
@@ -828,9 +830,10 @@ class TtsService {
     }
 
     return switch (voiceStyle) {
+      VoiceStyle.defaultVoice => languageVoices.first,
       VoiceStyle.femaleSmooth => _preferredFemaleVoice(languageVoices),
       VoiceStyle.male => _preferredMaleVoice(languageVoices),
-      VoiceStyle.defaultVoice => languageVoices.first,
+      VoiceStyle.natural => _preferredNaturalVoice(languageVoices),
     };
   }
 
@@ -890,6 +893,11 @@ class TtsService {
 
     return _voiceWithPreferredTerms(maleVoices, preferredTerms) ??
         maleVoices.first;
+  }
+
+  Map<String, String> _preferredNaturalVoice(List<Map<String, String>> voices) {
+    const preferredTerms = ['natural', 'neural', 'google', 'online', 'premium'];
+    return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
   }
 
   Map<String, String>? _voiceWithPreferredTerms(
@@ -1197,9 +1205,10 @@ try {
 
   String _windowsGenderFilterFor(VoiceStyle voiceStyle) {
     return switch (voiceStyle) {
+      VoiceStyle.defaultVoice => '',
       VoiceStyle.femaleSmooth => 'Female',
       VoiceStyle.male => 'Male',
-      VoiceStyle.defaultVoice => '',
+      VoiceStyle.natural => '',
     };
   }
 

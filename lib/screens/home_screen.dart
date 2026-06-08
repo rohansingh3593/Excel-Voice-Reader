@@ -249,6 +249,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final ExcelService _excelService = const ExcelService();
   static const String _speechRatePreferenceKey = 'speech_rate';
+  static const String _speechPitchPreferenceKey = 'speech_pitch';
+  static const String _selectedAccentPreferenceKey = 'selected_accent';
+  static const String _selectedVoiceStylePreferenceKey = 'selected_voice_style';
 
   final TtsService _ttsService = TtsService();
 
@@ -321,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _ttsService.playbackError.addListener(_showTtsPlaybackError);
-    unawaited(_loadSavedSpeechSpeed());
+    unawaited(_loadSavedPlayerPreferences());
   }
 
   @override
@@ -335,34 +338,69 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSavedSpeechSpeed() async {
+  Future<void> _loadSavedPlayerPreferences() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedRate = prefs.getDouble(_speechRatePreferenceKey);
-      if (savedRate == null) {
-        return;
-      }
+      final savedPitch = prefs.getDouble(_speechPitchPreferenceKey);
+      final savedAccent = prefs.getString(_selectedAccentPreferenceKey);
+      final savedVoiceStyle = prefs.getString(_selectedVoiceStylePreferenceKey);
 
-      final savedSpeed = _speechSpeedForRate(savedRate);
+      final selectedSpeed = savedRate == null
+          ? _selectedSpeed
+          : _speechSpeedForRate(savedRate);
+      final selectedPitch = (savedPitch ?? _pitch).clamp(0.5, 2.0).toDouble();
+      final selectedAccent = _accentForPreference(savedAccent) ?? _selectedAccent;
+      final selectedVoiceStyle =
+          _voiceStyleForPreference(savedVoiceStyle) ?? _selectedVoiceStyle;
+
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _selectedSpeed = savedSpeed;
+        _selectedSpeed = selectedSpeed;
+        _pitch = selectedPitch;
+        _selectedAccent = selectedAccent;
+        _selectedVoiceStyle = selectedVoiceStyle;
       });
       _applyPlaybackSettings();
     } catch (error) {
-      debugPrint('Unable to load saved speech speed: $error');
+      debugPrint('Unable to load saved player preferences: $error');
     }
   }
 
   Future<void> _saveSpeechSpeed(SpeechSpeed speed) async {
+    await _saveDoublePreference(_speechRatePreferenceKey, speed.rate);
+  }
+
+  Future<void> _saveSpeechPitch(double pitch) async {
+    await _saveDoublePreference(_speechPitchPreferenceKey, pitch);
+  }
+
+  Future<void> _saveSelectedAccent(AccentOption accent) async {
+    await _saveStringPreference(_selectedAccentPreferenceKey, accent.label);
+  }
+
+  Future<void> _saveSelectedVoiceStyle(VoiceStyle voiceStyle) async {
+    await _saveStringPreference(_selectedVoiceStylePreferenceKey, voiceStyle.label);
+  }
+
+  Future<void> _saveDoublePreference(String key, double value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_speechRatePreferenceKey, speed.rate);
+      await prefs.setDouble(key, value);
     } catch (error) {
-      debugPrint('Unable to save speech speed: $error');
+      debugPrint('Unable to save $key: $error');
+    }
+  }
+
+  Future<void> _saveStringPreference(String key, String value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, value);
+    } catch (error) {
+      debugPrint('Unable to save $key: $error');
     }
   }
 
@@ -372,6 +410,32 @@ class _HomeScreenState extends State<HomeScreen> {
       final speedDistance = (speed.rate - rate).abs();
       return speedDistance < closestDistance ? speed : closest;
     });
+  }
+
+  AccentOption? _accentForPreference(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+
+    for (final accent in TtsService.accents) {
+      if (accent.label == value || accent.languageCode == value) {
+        return accent;
+      }
+    }
+    return null;
+  }
+
+  VoiceStyle? _voiceStyleForPreference(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+
+    for (final voiceStyle in VoiceStyle.values) {
+      if (voiceStyle.label == value || voiceStyle.name == value) {
+        return voiceStyle;
+      }
+    }
+    return null;
   }
 
   void _showTtsPlaybackError() {
@@ -1147,10 +1211,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _restartPlaybackIfActive();
   }
 
+  void _changeAccent(AccentOption accent) {
+    setState(() {
+      _selectedAccent = accent;
+    });
+    unawaited(_saveSelectedAccent(accent));
+    _restartPlaybackIfActive();
+  }
+
   void _changeVoiceStyle(VoiceStyle voiceStyle) {
     setState(() {
       _selectedVoiceStyle = voiceStyle;
     });
+    unawaited(_saveSelectedVoiceStyle(voiceStyle));
     _restartPlaybackIfActive();
   }
 
@@ -1158,6 +1231,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _pitch = pitch;
     });
+    unawaited(_saveSpeechPitch(pitch));
     _restartPlaybackIfActive();
   }
 
@@ -1227,9 +1301,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 14),
             _buildDropdowns(),
             const SizedBox(height: 14),
-            _buildVoiceControls(),
-            const SizedBox(height: 14),
-            _buildNowPlayingDashboard(),
+            _buildVoicePlayerDashboard(),
             const SizedBox(height: 14),
             _buildQueuePanel(),
             const SizedBox(height: 14),
@@ -1347,182 +1419,24 @@ class _HomeScreenState extends State<HomeScreen> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _selectedSheet,
-              decoration: const InputDecoration(
-                labelText: 'Sheet',
-                prefixIcon: Icon(Icons.table_chart_outlined),
-                border: OutlineInputBorder(),
-              ),
-              hint: const Text('Select a sheet'),
-              items: workbook?.sheetNames
-                      .map(
-                        (sheetName) => DropdownMenuItem(
-                          value: sheetName,
-                          child: Text(sheetName),
-                        ),
-                      )
-                      .toList() ??
-                  const [],
-              onChanged: workbook == null ? null : _selectSheet,
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<AccentOption>(
-              initialValue: _selectedAccent,
-              decoration: const InputDecoration(
-                labelText: 'Accent / Language',
-                prefixIcon: Icon(Icons.record_voice_over_outlined),
-                border: OutlineInputBorder(),
-              ),
-              items: TtsService.accents
+        child: DropdownButtonFormField<String>(
+          initialValue: _selectedSheet,
+          decoration: const InputDecoration(
+            labelText: 'Sheet',
+            prefixIcon: Icon(Icons.table_chart_outlined),
+            border: OutlineInputBorder(),
+          ),
+          hint: const Text('Select a sheet'),
+          items: workbook?.sheetNames
                   .map(
-                    (accent) => DropdownMenuItem(
-                      value: accent,
-                      child: Text(accent.label),
+                    (sheetName) => DropdownMenuItem(
+                      value: sheetName,
+                      child: Text(sheetName),
                     ),
                   )
-                  .toList(),
-              onChanged: (accent) {
-                if (accent == null) {
-                  return;
-                }
-
-                setState(() {
-                  _selectedAccent = accent;
-                });
-                _restartPlaybackIfActive();
-              },
-            ),
-            const SizedBox(height: 14),
-            DropdownButtonFormField<VoiceStyle>(
-              initialValue: _selectedVoiceStyle,
-              decoration: const InputDecoration(
-                labelText: 'Voice Style',
-                prefixIcon: Icon(Icons.voice_chat_outlined),
-                border: OutlineInputBorder(),
-              ),
-              items: VoiceStyle.values
-                  .map(
-                    (voiceStyle) => DropdownMenuItem(
-                      value: voiceStyle,
-                      child: Text(voiceStyle.label),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (voiceStyle) {
-                if (voiceStyle == null) {
-                  return;
-                }
-
-                _changeVoiceStyle(voiceStyle);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVoiceControls() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Voice Controls',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _playbackQueue.isNotEmpty
-                        ? const Color(0xFFEEF2FF)
-                        : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Text(
-                    'Queue: ${_playbackQueue.length}',
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                FilledButton.tonalIcon(
-                  onPressed: _selectedRow == null ? null : _playSelectedRow,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Play'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _pauseSpeech,
-                  icon: const Icon(Icons.pause_rounded),
-                  label: const Text('Pause'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _resumeSpeech,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: const Text('Resume'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _stopSpeech,
-                  icon: const Icon(Icons.stop_rounded),
-                  label: const Text('Stop'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _skipToNextTopic,
-                  icon: const Icon(Icons.skip_next_rounded),
-                  label: const Text('Next'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            SegmentedButton<SpeechSpeed>(
-              segments: SpeechSpeed.values
-                  .map(
-                    (speed) => ButtonSegment(
-                      value: speed,
-                      label: Text(speed.label),
-                    ),
-                  )
-                  .toList(),
-              selected: {_selectedSpeed},
-              onSelectionChanged: (selection) {
-                _changeSpeed(selection.first);
-              },
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.tune_rounded),
-                const SizedBox(width: 10),
-                const Text('Pitch'),
-                Expanded(
-                  child: Slider(
-                    value: _pitch,
-                    min: 0.5,
-                    max: 2.0,
-                    divisions: 6,
-                    label: _pitch.toStringAsFixed(1),
-                    onChanged: _changePitch,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                  .toList() ??
+              const [],
+          onChanged: workbook == null ? null : _selectSheet,
         ),
       ),
     );
@@ -1534,7 +1448,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, progress, child) {
         final elapsed = _formatDuration(_currentPlaybackSeconds);
         final remaining = _formatDuration(
-          (_estimatedDurationSeconds - _currentPlaybackSeconds).clamp(0, double.infinity).toDouble(),
+          (_estimatedDurationSeconds - _currentPlaybackSeconds)
+              .clamp(0, double.infinity)
+              .toDouble(),
         );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1610,7 +1526,9 @@ class _HomeScreenState extends State<HomeScreen> {
           progress: _readingProgressNotifier,
           elapsedLabel: () => _formatDuration(_currentPlaybackSeconds),
           remainingLabel: () => _formatDuration(
-            (_estimatedDurationSeconds - _currentPlaybackSeconds).clamp(0, double.infinity).toDouble(),
+            (_estimatedDurationSeconds - _currentPlaybackSeconds)
+                .clamp(0, double.infinity)
+                .toDouble(),
           ),
           settingsLabel:
               'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Voice: ${_selectedVoiceStyle.label}',
@@ -1637,7 +1555,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return '$minutes:$secs';
   }
 
-  Widget _buildNowPlayingDashboard() {
+  Widget _buildVoicePlayerDashboard() {
     final item = _nowPlaying;
     final content = item == null
         ? 'No topic is currently playing.'
@@ -1654,9 +1572,150 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.graphic_eq_rounded),
-                const SizedBox(width: 8),
                 const Expanded(
+                  child: Text(
+                    'Voice Player Dashboard',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _playbackQueue.isNotEmpty
+                        ? const Color(0xFFEEF2FF)
+                        : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Text(
+                    'Queue: ${_playbackQueue.length}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: _selectedRow == null ? null : _playSelectedRow,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Play'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _pauseSpeech,
+                  icon: const Icon(Icons.pause_rounded),
+                  label: const Text('Pause'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _resumeSpeech,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Resume'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _stopSpeech,
+                  icon: const Icon(Icons.stop_rounded),
+                  label: const Text('Stop'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: _skipToNextTopic,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Next'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Text('Speed', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            SegmentedButton<SpeechSpeed>(
+              segments: SpeechSpeed.values
+                  .map(
+                    (speed) => ButtonSegment(
+                      value: speed,
+                      label: Text(speed.label),
+                    ),
+                  )
+                  .toList(),
+              selected: {_selectedSpeed},
+              onSelectionChanged: (selection) {
+                _changeSpeed(selection.first);
+              },
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(Icons.tune_rounded),
+                const SizedBox(width: 10),
+                const Text('Pitch'),
+                Expanded(
+                  child: Slider(
+                    value: _pitch,
+                    min: 0.5,
+                    max: 2.0,
+                    divisions: 6,
+                    label: _pitch.toStringAsFixed(1),
+                    onChanged: _changePitch,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<AccentOption>(
+              initialValue: _selectedAccent,
+              decoration: const InputDecoration(
+                labelText: 'Accent / Language',
+                prefixIcon: Icon(Icons.record_voice_over_outlined),
+                border: OutlineInputBorder(),
+              ),
+              items: TtsService.accents
+                  .map(
+                    (accent) => DropdownMenuItem(
+                      value: accent,
+                      child: Text(accent.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (accent) {
+                if (accent == null) {
+                  return;
+                }
+
+                _changeAccent(accent);
+              },
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<VoiceStyle>(
+              initialValue: _selectedVoiceStyle,
+              decoration: const InputDecoration(
+                labelText: 'Voice Style',
+                prefixIcon: Icon(Icons.voice_chat_outlined),
+                border: OutlineInputBorder(),
+              ),
+              items: VoiceStyle.values
+                  .map(
+                    (voiceStyle) => DropdownMenuItem(
+                      value: voiceStyle,
+                      child: Text(voiceStyle.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (voiceStyle) {
+                if (voiceStyle == null) {
+                  return;
+                }
+
+                _changeVoiceStyle(voiceStyle);
+              },
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: const [
+                Icon(Icons.graphic_eq_rounded),
+                SizedBox(width: 8),
+                Expanded(
                   child: Text(
                     'Now Playing',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
