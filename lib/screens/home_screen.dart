@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/excel_service.dart';
 import '../services/tts_service.dart';
@@ -247,6 +248,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ExcelService _excelService = const ExcelService();
+  static const String _speechRatePreferenceKey = 'speech_rate';
+
   final TtsService _ttsService = TtsService();
 
   ExcelWorkbookData? _workbook;
@@ -266,6 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
   TopicPlaybackItem? _nowPlaying;
   List<TopicPlaybackItem> _playbackQueue = const <TopicPlaybackItem>[];
   final Map<String, TopicPlaylist> _playlists = <String, TopicPlaylist>{};
+  final Set<String> _selectedTopicIds = <String>{};
   final ScrollController _readingScrollController = ScrollController();
   final ValueNotifier<int> _highlightedSegmentNotifier = ValueNotifier<int>(0);
   final ValueNotifier<double> _readingProgressNotifier = ValueNotifier<double>(0);
@@ -317,6 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _ttsService.playbackError.addListener(_showTtsPlaybackError);
+    unawaited(_loadSavedSpeechSpeed());
   }
 
   @override
@@ -328,6 +333,45 @@ class _HomeScreenState extends State<HomeScreen> {
     _ttsService.playbackError.removeListener(_showTtsPlaybackError);
     _ttsService.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSavedSpeechSpeed() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedRate = prefs.getDouble(_speechRatePreferenceKey);
+      if (savedRate == null) {
+        return;
+      }
+
+      final savedSpeed = _speechSpeedForRate(savedRate);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _selectedSpeed = savedSpeed;
+      });
+      _applyPlaybackSettings();
+    } catch (error) {
+      debugPrint('Unable to load saved speech speed: $error');
+    }
+  }
+
+  Future<void> _saveSpeechSpeed(SpeechSpeed speed) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_speechRatePreferenceKey, speed.rate);
+    } catch (error) {
+      debugPrint('Unable to save speech speed: $error');
+    }
+  }
+
+  SpeechSpeed _speechSpeedForRate(double rate) {
+    return SpeechSpeed.values.reduce((closest, speed) {
+      final closestDistance = (closest.rate - rate).abs();
+      final speedDistance = (speed.rate - rate).abs();
+      return speedDistance < closestDistance ? speed : closest;
+    });
   }
 
   void _showTtsPlaybackError() {
@@ -390,6 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedKeyword = null;
     _selectedTopic = null;
     _selectedRow = null;
+    _selectedTopicIds.clear();
     _displayedSheetRows = const <ExcelRowData>[];
     _loadedSheet = null;
   }
@@ -427,27 +472,63 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedKeyword = keyword;
       _selectedTopic = null;
       _selectedRow = null;
+      _selectedTopicIds.clear();
     });
   }
 
-  TopicPlaybackItem? _topicItemFor(String topic, {String? playlistName}) {
+  List<TopicPlaybackItem> _topicItemsForKeyword(String keyword) {
     final sheetName = _selectedSheet;
+    if (sheetName == null) {
+      return const <TopicPlaybackItem>[];
+    }
+
+    final topics = _sheetRows
+        .where((row) => row.keyword == keyword)
+        .map((row) => row.topic)
+        .where((topic) => topic.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    return topics
+        .map((topic) => _topicItemFor(topic, keyword: keyword))
+        .whereType<TopicPlaybackItem>()
+        .toList(growable: false);
+  }
+
+  List<TopicPlaybackItem> _selectedTopicItems() {
     final keyword = _selectedKeyword;
-    if (sheetName == null || keyword == null) {
+    if (keyword == null || _selectedTopicIds.isEmpty) {
+      return const <TopicPlaybackItem>[];
+    }
+
+    return _topicItemsForKeyword(keyword)
+        .where((item) => _selectedTopicIds.contains(item.id))
+        .toList(growable: false);
+  }
+
+  TopicPlaybackItem? _topicItemFor(
+    String topic, {
+    String? keyword,
+    String? playlistName,
+  }) {
+    final sheetName = _selectedSheet;
+    final resolvedKeyword = keyword ?? _selectedKeyword;
+    if (sheetName == null || resolvedKeyword == null) {
       return null;
     }
 
     final rows = _sheetRows
-        .where((row) => row.keyword == keyword && row.topic == topic)
+        .where((row) => row.keyword == resolvedKeyword && row.topic == topic)
         .toList(growable: false);
     if (rows.isEmpty) {
       return null;
     }
 
     return TopicPlaybackItem(
-      id: '$sheetName|$keyword|$topic',
+      id: '$sheetName|$resolvedKeyword|$topic',
       sheetName: sheetName,
-      keyword: keyword,
+      keyword: resolvedKeyword,
       topic: topic,
       rows: rows,
       playlistName: playlistName,
@@ -698,14 +779,44 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addTopicToQueue(TopicPlaybackItem item) async {
+    await _addTopicsToQueue([item]);
+  }
+
+  Future<void> _addTopicsToQueue(List<TopicPlaybackItem> items) async {
+    if (items.isEmpty) {
+      _showSnackBar('Select at least one topic first.');
+      return;
+    }
+
     setState(() {
-      _playbackQueue = [..._playbackQueue, item];
+      _playbackQueue = [..._playbackQueue, ...items];
     });
-    _showSnackBar('Added "${item.topic}" to queue.');
+    _showSnackBar(
+      items.length == 1
+          ? 'Added "${items.first.topic}" to queue.'
+          : 'Added ${items.length} topics to queue.',
+    );
 
     if (_nowPlaying == null && !_ttsService.isPlaying) {
       await _playNextQueued();
     }
+  }
+
+  Future<void> _playKeywordNow(String keyword) async {
+    final items = _topicItemsForKeyword(keyword);
+    if (items.isEmpty) {
+      _showSnackBar('No readable topics found for this keyword.');
+      return;
+    }
+
+    setState(() {
+      _playbackQueue = [...items.skip(1), ..._playbackQueue];
+    });
+    await _playTopicNow(items.first);
+  }
+
+  Future<void> _addKeywordToQueue(String keyword) async {
+    await _addTopicsToQueue(_topicItemsForKeyword(keyword));
   }
 
   Future<void> _playNextQueued() async {
@@ -749,7 +860,65 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _playQueueFromBeginning() async {
+    if (_playbackQueue.isEmpty) {
+      _showSnackBar('Queue is empty.');
+      return;
+    }
+
+    await _playNextQueued();
+  }
+
+  void _toggleTopicSelection(TopicPlaybackItem item, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedTopicIds.add(item.id);
+      } else {
+        _selectedTopicIds.remove(item.id);
+      }
+    });
+  }
+
+  void _selectAllVisibleTopics(List<TopicPlaybackItem> items) {
+    setState(() {
+      _selectedTopicIds
+        ..clear()
+        ..addAll(items.map((item) => item.id));
+    });
+  }
+
+  void _clearTopicSelection() {
+    setState(() {
+      _selectedTopicIds.clear();
+    });
+  }
+
+  void _removeSelectedFromQueue() {
+    final selectedIds = Set<String>.of(_selectedTopicIds);
+    if (selectedIds.isEmpty) {
+      _showSnackBar('Select at least one topic first.');
+      return;
+    }
+
+    setState(() {
+      _playbackQueue = _playbackQueue
+          .where((item) => !selectedIds.contains(item.id))
+          .toList(growable: false);
+      _selectedTopicIds.clear();
+    });
+    _showSnackBar('Removed selected topics from queue.');
+  }
+
   Future<void> _showAddToPlaylistDialog(TopicPlaybackItem item) async {
+    await _showAddItemsToPlaylistDialog([item]);
+  }
+
+  Future<void> _showAddItemsToPlaylistDialog(List<TopicPlaybackItem> items) async {
+    if (items.isEmpty) {
+      _showSnackBar('Select at least one topic first.');
+      return;
+    }
+
     final controller = TextEditingController();
     final selectedPlaylist = await showDialog<String>(
       context: context,
@@ -812,19 +981,30 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    _addTopicToPlaylist(item, playlistName);
+    _addTopicsToPlaylist(items, playlistName);
   }
 
-  void _addTopicToPlaylist(TopicPlaybackItem item, String playlistName) {
+  void _addTopicsToPlaylist(List<TopicPlaybackItem> items, String playlistName) {
+    if (items.isEmpty) {
+      _showSnackBar('Select at least one topic first.');
+      return;
+    }
+
     final current = _playlists[playlistName] ??
         TopicPlaylist(name: playlistName, items: const <TopicPlaybackItem>[]);
-    final playlistItem = item.copyWith(playlistName: playlistName);
+    final playlistItems = items
+        .map((item) => item.copyWith(playlistName: playlistName))
+        .toList(growable: false);
     setState(() {
       _playlists[playlistName] = current.copyWith(
-        items: [...current.items, playlistItem],
+        items: [...current.items, ...playlistItems],
       );
     });
-    _showSnackBar('Added "${item.topic}" to $playlistName.');
+    _showSnackBar(
+      items.length == 1
+          ? 'Added "${items.first.topic}" to $playlistName.'
+          : 'Added ${items.length} topics to $playlistName.',
+    );
   }
 
   void _removePlaylistItem(String playlistName, int index) {
@@ -839,6 +1019,23 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
     setState(() {
       _playlists[playlistName] = playlist.copyWith(items: items);
+    });
+  }
+
+  void _clearPlaylist(String playlistName) {
+    final playlist = _playlists[playlistName];
+    if (playlist == null) {
+      return;
+    }
+
+    setState(() {
+      _playlists[playlistName] = playlist.copyWith(items: const <TopicPlaybackItem>[]);
+    });
+  }
+
+  void _deletePlaylist(String playlistName) {
+    setState(() {
+      _playlists.remove(playlistName);
     });
   }
 
@@ -946,6 +1143,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _selectedSpeed = speed;
     });
+    unawaited(_saveSpeechSpeed(speed));
     _restartPlaybackIfActive();
   }
 
@@ -1597,10 +1795,20 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildQueueItemTile(_playbackQueue[index], index),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _clearPlaybackQueue,
-                icon: const Icon(Icons.clear_all_rounded),
-                label: const Text('Clear Queue'),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: _playQueueFromBeginning,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Play Queue'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _clearPlaybackQueue,
+                    icon: const Icon(Icons.clear_all_rounded),
+                    label: const Text('Clear Queue'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1686,6 +1894,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.queue_rounded),
                 label: const Text('Add Playlist to Queue'),
               ),
+              OutlinedButton.icon(
+                onPressed: playlist.items.isEmpty
+                    ? null
+                    : () => _clearPlaylist(playlist.name),
+                icon: const Icon(Icons.clear_all_rounded),
+                label: const Text('Clear Playlist'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _deletePlaylist(playlist.name),
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('Delete Playlist'),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1766,14 +1986,7 @@ class _HomeScreenState extends State<HomeScreen> {
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
-          ...keywords.map((keyword) => Card(
-                child: ListTile(
-                  title: Text(keyword),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 18),
-                  onTap: () => _selectKeyword(keyword),
-                ),
-              )),
+          ...keywords.map(_buildKeywordCard),
         ],
       );
     }
@@ -1798,6 +2011,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _selectedKeyword = null;
                   _selectedTopic = null;
                   _selectedRow = null;
+                  _selectedTopicIds.clear();
                 });
               },
             ),
@@ -1810,6 +2024,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        _buildBulkTopicActions(
+          topics
+              .map((topic) => _topicItemFor(topic))
+              .whereType<TopicPlaybackItem>()
+              .toList(growable: false),
         ),
         const SizedBox(height: 12),
         ...topics.map((topic) {
@@ -1833,8 +2054,111 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildKeywordCard(String keyword) {
+    final topicCount = _topicItemsForKeyword(keyword).length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(keyword),
+              subtitle: Text('$topicCount topic(s)'),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 18),
+              onTap: () => _selectKeyword(keyword),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: topicCount == 0 ? null : () => _playKeywordNow(keyword),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Play Now'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: topicCount == 0 ? null : () => _addKeywordToQueue(keyword),
+                  icon: const Icon(Icons.queue_rounded),
+                  label: const Text('Add to Queue'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: topicCount == 0
+                      ? null
+                      : () => _showAddItemsToPlaylistDialog(
+                            _topicItemsForKeyword(keyword),
+                          ),
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  label: const Text('Add to Playlist'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBulkTopicActions(List<TopicPlaybackItem> items) {
+    final selectedItems = _selectedTopicItems();
+    final selectedCount = selectedItems.length;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Bulk actions${selectedCount == 0 ? '' : ' • $selectedCount selected'}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: items.isEmpty ? null : () => _selectAllVisibleTopics(items),
+                  icon: const Icon(Icons.select_all_rounded),
+                  label: const Text('Select All'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: selectedItems.isEmpty
+                      ? null
+                      : () => _addTopicsToQueue(selectedItems),
+                  icon: const Icon(Icons.queue_rounded),
+                  label: const Text('Add Selected to Queue'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: selectedItems.isEmpty
+                      ? null
+                      : () => _showAddItemsToPlaylistDialog(selectedItems),
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  label: const Text('Add Selected to Playlist'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: selectedItems.isEmpty ? null : _removeSelectedFromQueue,
+                  icon: const Icon(Icons.remove_circle_outline_rounded),
+                  label: const Text('Remove Selected'),
+                ),
+                TextButton.icon(
+                  onPressed: selectedItems.isEmpty ? null : _clearTopicSelection,
+                  icon: const Icon(Icons.clear_rounded),
+                  label: const Text('Clear Selection'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopicCard(TopicPlaybackItem item) {
     final isSelected = item.topic == _selectedTopic;
+    final isBulkSelected = _selectedTopicIds.contains(item.id);
     return Card(
       color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
       child: Padding(
@@ -1842,9 +2166,24 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              item.topic,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Checkbox(
+                  value: isBulkSelected,
+                  onChanged: (selected) =>
+                      _toggleTopicSelection(item, selected ?? false),
+                ),
+                Expanded(
+                  child: Text(
+                    item.topic,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(

@@ -14,7 +14,8 @@ class AccentOption {
 enum SpeechSpeed {
   slow('Slow', 0.75),
   normal('Normal', 1.0),
-  fast('Fast', 1.25);
+  fast('Fast', 1.25),
+  veryFast('Very Fast', 1.5);
 
   const SpeechSpeed(this.label, this.rate);
   final String label;
@@ -1178,7 +1179,7 @@ try {
   }
 
   double _platformSpeechRateFor(SpeechSpeed speed) {
-    return speed.rate.clamp(0.1, 1.0).toDouble();
+    return speed.rate.clamp(0.1, 2.0).toDouble();
   }
 
   int _windowsRateFor(SpeechSpeed speed) {
@@ -1186,6 +1187,7 @@ try {
       SpeechSpeed.slow => -3,
       SpeechSpeed.normal => 0,
       SpeechSpeed.fast => 3,
+      SpeechSpeed.veryFast => 5,
     };
   }
 
