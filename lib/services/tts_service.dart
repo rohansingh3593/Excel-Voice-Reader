@@ -12,6 +12,7 @@ class AccentOption {
 }
 
 enum SpeechSpeed {
+  verySlow('Very Slow', 0.5),
   slow('Slow', 0.75),
   normal('Normal', 1.0),
   fast('Fast', 1.25),
@@ -1192,6 +1193,7 @@ try {
 
   int _windowsRateFor(SpeechSpeed speed) {
     return switch (speed) {
+      SpeechSpeed.verySlow => -5,
       SpeechSpeed.slow => -3,
       SpeechSpeed.normal => 0,
       SpeechSpeed.fast => 3,
