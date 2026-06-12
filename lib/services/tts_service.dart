@@ -26,10 +26,21 @@ enum SpeechSpeed {
 enum VoiceStyle {
   defaultVoice('Default'),
   femaleSmooth('Female Smooth'),
-  male('Male'),
-  natural('Natural');
+  maleSmooth('Male Smooth'),
+  humanNatural('Human Natural'),
+  storytelling('Storytelling'),
+  teacherMode('Teacher Mode');
 
   const VoiceStyle(this.label);
+  final String label;
+}
+
+enum VoiceQuality {
+  device('Device Voice'),
+  humanNatural('Human Natural Voice'),
+  premiumNeural('Premium Neural Voice');
+
+  const VoiceQuality(this.label);
   final String label;
 }
 
@@ -40,6 +51,7 @@ class _TtsQueueItem {
     required this.speed,
     required this.pitch,
     required this.voiceStyle,
+    required this.voiceQuality,
   }) : completion = Completer<void>();
 
   final String text;
@@ -47,6 +59,7 @@ class _TtsQueueItem {
   SpeechSpeed speed;
   double pitch;
   VoiceStyle voiceStyle;
+  VoiceQuality voiceQuality;
   final Completer<void> completion;
 }
 
@@ -77,6 +90,7 @@ class TtsService {
 
   static const int _speechChunkSize = 3500;
   static const int _hindiSpeechChunkSize = 180;
+  static const int _humanizedSpeechChunkSize = 220;
   static const String _hindiLanguageCode = 'hi-IN';
   static final RegExp _hindiRegex = RegExp(r'[\u0900-\u097F]');
   static final RegExp _speakableTextRegex = RegExp(
@@ -109,6 +123,7 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -123,6 +138,7 @@ class TtsService {
       speed: speed,
       pitch: pitch,
       voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
     );
     _queue.add(queueItem);
     queueLength.value = _queue.length;
@@ -138,6 +154,7 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
   }) {
     _applySettingsToItem(
       _currentItem,
@@ -145,6 +162,7 @@ class TtsService {
       speed: speed,
       pitch: pitch,
       voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
     );
     _applySettingsToItem(
       _pausedItem,
@@ -152,6 +170,7 @@ class TtsService {
       speed: speed,
       pitch: pitch,
       voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
     );
     for (final item in _queue) {
       _applySettingsToItem(
@@ -160,6 +179,7 @@ class TtsService {
         speed: speed,
         pitch: pitch,
         voiceStyle: voiceStyle,
+        voiceQuality: voiceQuality,
       );
     }
   }
@@ -170,6 +190,7 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
   }) {
     if (item == null) {
       return;
@@ -179,6 +200,7 @@ class TtsService {
     item.speed = speed;
     item.pitch = pitch;
     item.voiceStyle = voiceStyle;
+    item.voiceQuality = voiceQuality;
   }
 
   /// Pause current speech. On Windows this kills the process and stores
@@ -301,6 +323,7 @@ class TtsService {
               speed: item.speed,
               pitch: item.pitch,
               voiceStyle: item.voiceStyle,
+              voiceQuality: item.voiceQuality,
               generation: itemGeneration,
             );
           } else {
@@ -395,9 +418,11 @@ class TtsService {
     await _configuration;
     await _tts.setVolume(1.0);
 
+    final humanized = _usesHumanizedDelivery(item.voiceStyle, item.voiceQuality);
     final chunks = _speechChunksForText(
       text: item.text,
       englishLanguageCode: item.accent.languageCode,
+      humanized: humanized,
     );
     debugPrint(
       'TtsService._speakWithPlatformTts() speaking ${chunks.length} chunk(s)',
@@ -415,8 +440,16 @@ class TtsService {
         continue;
       }
 
-      final speechRate = _platformSpeechRateFor(item.speed);
-      final speechPitch = item.pitch;
+      final speechRate = _platformSpeechRateFor(
+        item.speed,
+        voiceStyle: item.voiceStyle,
+        voiceQuality: item.voiceQuality,
+      );
+      final speechPitch = _speechPitchFor(
+        item.pitch,
+        voiceStyle: item.voiceStyle,
+        voiceQuality: item.voiceQuality,
+      );
       debugPrint(
         'TtsService._speakWithPlatformTts() chunk ${index + 1}/${chunks.length} '
         '(length=${chunk.text.length}, language=${chunk.languageCode})',
@@ -433,6 +466,8 @@ class TtsService {
       final result = chunk.isHindi
           ? await _speakHindi(
               text: chunk.text,
+              voiceStyle: item.voiceStyle,
+              voiceQuality: item.voiceQuality,
               speechRate: speechRate,
               speechPitch: speechPitch,
             )
@@ -440,6 +475,7 @@ class TtsService {
               text: chunk.text,
               languageCode: chunk.languageCode,
               voiceStyle: item.voiceStyle,
+              voiceQuality: item.voiceQuality,
               speechRate: speechRate,
               speechPitch: speechPitch,
             );
@@ -448,14 +484,24 @@ class TtsService {
           'The text-to-speech engine rejected the speech request.',
         );
       }
+      await _pauseForHumanizedDelivery(
+        chunk.text,
+        voiceStyle: item.voiceStyle,
+        voiceQuality: item.voiceQuality,
+        generation: generation,
+      );
     }
   }
 
   List<_SpeechTextChunk> _speechChunksForText({
     required String text,
     required String englishLanguageCode,
+    bool humanized = false,
   }) {
-    final units = _languageDetectionUnits(text);
+    final units = _languageDetectionUnits(
+      text,
+      mergeSameLanguage: !humanized,
+    );
     final chunks = <_SpeechTextChunk>[];
 
     for (final unit in units) {
@@ -463,7 +509,9 @@ class TtsService {
       final languageCode = isHindi ? _hindiLanguageCode : englishLanguageCode;
       final splitUnits = _splitTextForSpeech(
         unit,
-        maxLength: isHindi ? _hindiSpeechChunkSize : _speechChunkSize,
+        maxLength: humanized
+            ? _humanizedSpeechChunkSize
+            : (isHindi ? _hindiSpeechChunkSize : _speechChunkSize),
       );
       for (final splitUnit in splitUnits) {
         if (!_hasSpeakableText(splitUnit)) {
@@ -489,13 +537,19 @@ class TtsService {
     return chunks;
   }
 
-  List<String> _languageDetectionUnits(String text) {
+  List<String> _languageDetectionUnits(
+    String text, {
+    bool mergeSameLanguage = true,
+  }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
       return const <String>[];
     }
 
-    final matches = RegExp(r'[^.!?।\n]+[.!?।]*|\n+')
+    final unitPattern = mergeSameLanguage
+        ? r'[^.!?।\n]+[.!?।]*|\n+'
+        : r'[^.!?।,\n]+[.!?।,]*|\n+';
+    final matches = RegExp(unitPattern)
         .allMatches(trimmed)
         .map((match) => match.group(0)?.trim() ?? '')
         .where((part) => part.isNotEmpty)
@@ -508,7 +562,7 @@ class TtsService {
     final languages = <bool>[];
     for (final match in matches) {
       final isHindi = _isHindiText(match);
-      if (units.isNotEmpty && languages.last == isHindi) {
+      if (mergeSameLanguage && units.isNotEmpty && languages.last == isHindi) {
         units[units.length - 1] = '${units.last}\n$match';
       } else {
         units.add(match);
@@ -624,6 +678,8 @@ class TtsService {
 
   Future<dynamic> _speakHindi({
     required String text,
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
     required double speechRate,
     required double speechPitch,
   }) async {
@@ -634,7 +690,10 @@ class TtsService {
 
     await _configureHindiTtsEngine();
     await _tts.setLanguage(_hindiLanguageCode);
-    final voiceApplied = await _setHindiVoice();
+    final voiceApplied = await _setHindiVoice(
+      voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
+    );
     if (!voiceApplied) {
       await _tts.setLanguage(_hindiLanguageCode);
     }
@@ -648,6 +707,7 @@ class TtsService {
     required String text,
     required String languageCode,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
     required double speechRate,
     required double speechPitch,
   }) async {
@@ -660,6 +720,7 @@ class TtsService {
     await _applyVoiceForStyle(
       languageCode: languageCode,
       voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
     );
     await _tts.setVolume(1.0);
     await _tts.setSpeechRate(speechRate);
@@ -667,7 +728,10 @@ class TtsService {
     return _tts.speak(cleanText);
   }
 
-  Future<bool> _setHindiVoice() async {
+  Future<bool> _setHindiVoice({
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
+  }) async {
     final voices = await _loadVoiceMaps();
     // ignore: avoid_print
     print('Available Voices: $voices');
@@ -681,7 +745,11 @@ class TtsService {
       return false;
     }
 
-    final selectedVoice = _preferredHindiVoice(hindiVoices);
+    final selectedVoice = _selectHindiVoiceForStyle(
+      hindiVoices,
+      voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
+    );
     final ttsVoice = _voiceMapForTts(selectedVoice);
     if (ttsVoice == null) {
       debugPrint(
@@ -768,10 +836,12 @@ class TtsService {
   Future<void> _applyVoiceForStyle({
     required String languageCode,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
   }) async {
     final selectedVoice = await _selectVoiceForStyle(
       languageCode: languageCode,
       voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
     );
     if (selectedVoice == null) {
       debugPrint(
@@ -817,6 +887,7 @@ class TtsService {
   Future<Map<String, String>?> _selectVoiceForStyle({
     required String languageCode,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
   }) async {
     final voices = await _loadVoiceMaps();
     final languageVoices = voices
@@ -830,11 +901,21 @@ class TtsService {
       return _preferredHindiVoice(languageVoices);
     }
 
+    if (voiceQuality == VoiceQuality.premiumNeural ||
+        voiceQuality == VoiceQuality.humanNatural) {
+      final neuralVoice = _preferredNeuralVoice(languageVoices);
+      if (neuralVoice != null) {
+        return neuralVoice;
+      }
+    }
+
     return switch (voiceStyle) {
       VoiceStyle.defaultVoice => languageVoices.first,
       VoiceStyle.femaleSmooth => _preferredFemaleVoice(languageVoices),
-      VoiceStyle.male => _preferredMaleVoice(languageVoices),
-      VoiceStyle.natural => _preferredNaturalVoice(languageVoices),
+      VoiceStyle.maleSmooth => _preferredMaleVoice(languageVoices),
+      VoiceStyle.humanNatural => _preferredNaturalVoice(languageVoices),
+      VoiceStyle.storytelling => _preferredStorytellingVoice(languageVoices),
+      VoiceStyle.teacherMode => _preferredTeacherVoice(languageVoices),
     };
   }
 
@@ -854,6 +935,36 @@ class TtsService {
         locale.startsWith('$language-') ||
         locale == primaryLanguage ||
         locale.startsWith('$primaryLanguage-');
+  }
+
+  Map<String, String> _selectHindiVoiceForStyle(
+    List<Map<String, String>> voices, {
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
+  }) {
+    if (voiceQuality == VoiceQuality.premiumNeural ||
+        voiceQuality == VoiceQuality.humanNatural ||
+        voiceStyle == VoiceStyle.humanNatural ||
+        voiceStyle == VoiceStyle.storytelling ||
+        voiceStyle == VoiceStyle.teacherMode) {
+      final neuralVoice = _preferredNeuralVoice(voices);
+      if (neuralVoice != null) {
+        return neuralVoice;
+      }
+    }
+
+    if (voiceStyle == VoiceStyle.maleSmooth) {
+      return _voiceWithPreferredTerms(voices, const ['madhur', 'male', 'man']) ??
+          _preferredHindiVoice(voices);
+    }
+
+    if (voiceStyle == VoiceStyle.femaleSmooth ||
+        voiceStyle == VoiceStyle.teacherMode) {
+      return _voiceWithPreferredTerms(voices, const ['swara', 'female', 'woman']) ??
+          _preferredHindiVoice(voices);
+    }
+
+    return _preferredHindiVoice(voices);
   }
 
   Map<String, String> _preferredHindiVoice(List<Map<String, String>> voices) {
@@ -901,6 +1012,29 @@ class TtsService {
     return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
   }
 
+  Map<String, String> _preferredStorytellingVoice(List<Map<String, String>> voices) {
+    const preferredTerms = ['neural', 'natural', 'story', 'narrator', 'google'];
+    return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
+  }
+
+  Map<String, String> _preferredTeacherVoice(List<Map<String, String>> voices) {
+    const preferredTerms = ['neural', 'natural', 'teacher', 'google', 'female'];
+    return _voiceWithPreferredTerms(voices, preferredTerms) ?? voices.first;
+  }
+
+  Map<String, String>? _preferredNeuralVoice(List<Map<String, String>> voices) {
+    const preferredTerms = [
+      'neural',
+      'natural',
+      'swara',
+      'madhur',
+      'jenny',
+      'guy',
+      'google',
+    ];
+    return _voiceWithPreferredTerms(voices, preferredTerms);
+  }
+
   Map<String, String>? _voiceWithPreferredTerms(
     List<Map<String, String>> voices,
     List<String> preferredTerms,
@@ -933,11 +1067,14 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
     required int generation,
   }) async {
+    final humanized = _usesHumanizedDelivery(voiceStyle, voiceQuality);
     final chunks = _speechChunksForText(
       text: text,
       englishLanguageCode: accent.languageCode,
+      humanized: humanized,
     );
     debugPrint(
       '_speakWithWindowsSapi starting (${chunks.length} chunk(s), accent=${accent.label})',
@@ -968,6 +1105,13 @@ class TtsService {
         speed: speed,
         pitch: pitch,
         voiceStyle: voiceStyle,
+        voiceQuality: voiceQuality,
+        generation: generation,
+      );
+      await _pauseForHumanizedDelivery(
+        chunk.text,
+        voiceStyle: voiceStyle,
+        voiceQuality: voiceQuality,
         generation: generation,
       );
     }
@@ -979,6 +1123,7 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
     required int generation,
   }) async {
     final tempDir = Directory.systemTemp;
@@ -1001,6 +1146,7 @@ class TtsService {
       speed: speed,
       pitch: pitch,
       voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
       stopSignalFilePath: stopSignalFile.path,
     );
     await scriptFile.writeAsString(script, encoding: utf8);
@@ -1094,6 +1240,7 @@ class TtsService {
     required SpeechSpeed speed,
     required double pitch,
     required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
     required String stopSignalFilePath,
   }) {
     final escapedTextFilePath =
@@ -1102,8 +1249,18 @@ class TtsService {
         _escapePowerShellSingleQuotedString(languageCode);
     final escapedStopSignalFilePath =
         _escapePowerShellSingleQuotedString(stopSignalFilePath);
-    final windowsRate = _windowsRateFor(speed);
-    final windowsPitch = _windowsPitchPercentFor(pitch);
+    final windowsRate = _windowsRateFor(
+      speed,
+      voiceStyle: voiceStyle,
+      voiceQuality: voiceQuality,
+    );
+    final windowsPitch = _windowsPitchPercentFor(
+      _speechPitchFor(
+        pitch,
+        voiceStyle: voiceStyle,
+        voiceQuality: voiceQuality,
+      ),
+    );
     final preferredGender = _windowsGenderFilterFor(voiceStyle);
 
     return '''
@@ -1187,18 +1344,106 @@ try {
 ''';
   }
 
-  double _platformSpeechRateFor(SpeechSpeed speed) {
-    return speed.rate.clamp(0.1, 2.0).toDouble();
+  double _platformSpeechRateFor(
+    SpeechSpeed speed, {
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
+  }) {
+    final multiplier = _humanizedRateMultiplier(voiceStyle, voiceQuality);
+    return (speed.rate * multiplier).clamp(0.1, 2.0).toDouble();
   }
 
-  int _windowsRateFor(SpeechSpeed speed) {
-    return switch (speed) {
-      SpeechSpeed.verySlow => -5,
-      SpeechSpeed.slow => -3,
-      SpeechSpeed.normal => 0,
-      SpeechSpeed.fast => 3,
-      SpeechSpeed.veryFast => 5,
+  double _speechPitchFor(
+    double pitch, {
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
+  }) {
+    if (_usesHumanizedDelivery(voiceStyle, voiceQuality)) {
+      return ((pitch + 1.0) / 2).clamp(0.85, 1.15).toDouble();
+    }
+    return pitch;
+  }
+
+  double _humanizedRateMultiplier(VoiceStyle voiceStyle, VoiceQuality voiceQuality) {
+    return switch (voiceStyle) {
+      VoiceStyle.storytelling => 0.9,
+      VoiceStyle.teacherMode => 0.94,
+      VoiceStyle.humanNatural => 0.95,
+      _ => voiceQuality == VoiceQuality.humanNatural ||
+              voiceQuality == VoiceQuality.premiumNeural
+          ? 0.95
+          : 1.0,
     };
+  }
+
+  bool _usesHumanizedDelivery(VoiceStyle voiceStyle, VoiceQuality voiceQuality) {
+    return voiceQuality != VoiceQuality.device ||
+        voiceStyle == VoiceStyle.humanNatural ||
+        voiceStyle == VoiceStyle.storytelling ||
+        voiceStyle == VoiceStyle.teacherMode;
+  }
+
+  Future<void> _pauseForHumanizedDelivery(
+    String text, {
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
+    required int generation,
+  }) async {
+    if (!_usesHumanizedDelivery(voiceStyle, voiceQuality) ||
+        generation != _speechGeneration) {
+      return;
+    }
+
+    final pause = _humanizedPauseFor(text, voiceStyle);
+    if (pause <= Duration.zero) {
+      return;
+    }
+    await Future.delayed(pause);
+  }
+
+  Duration _humanizedPauseFor(String text, VoiceStyle voiceStyle) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return Duration.zero;
+    }
+
+    var milliseconds = 160;
+    if (trimmed.endsWith('.') ||
+        trimmed.endsWith('!') ||
+        trimmed.endsWith('?') ||
+        trimmed.endsWith('।')) {
+      milliseconds = 420;
+    } else if (trimmed.endsWith(',')) {
+      milliseconds = 240;
+    }
+
+    if (voiceStyle == VoiceStyle.storytelling) {
+      milliseconds += 180;
+    } else if (voiceStyle == VoiceStyle.teacherMode) {
+      milliseconds += 100;
+    }
+    return Duration(milliseconds: milliseconds);
+  }
+
+  int _windowsRateFor(
+    SpeechSpeed speed, {
+    required VoiceStyle voiceStyle,
+    required VoiceQuality voiceQuality,
+  }) {
+    final adjustedRate = speed.rate * _humanizedRateMultiplier(voiceStyle, voiceQuality);
+    if (adjustedRate <= 0.55) {
+      return -6;
+    }
+    if (adjustedRate <= 0.75) {
+      return -3;
+    }
+    if (adjustedRate < 1.1) {
+      return 0;
+    }
+    if (adjustedRate < 1.4) {
+      return 3;
+    }
+    return 5;
   }
 
   int _windowsPitchPercentFor(double pitch) {
@@ -1209,8 +1454,10 @@ try {
     return switch (voiceStyle) {
       VoiceStyle.defaultVoice => '',
       VoiceStyle.femaleSmooth => 'Female',
-      VoiceStyle.male => 'Male',
-      VoiceStyle.natural => '',
+      VoiceStyle.maleSmooth => 'Male',
+      VoiceStyle.humanNatural => '',
+      VoiceStyle.storytelling => '',
+      VoiceStyle.teacherMode => 'Female',
     };
   }
 

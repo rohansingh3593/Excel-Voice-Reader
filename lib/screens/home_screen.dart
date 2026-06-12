@@ -252,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String _speechPitchPreferenceKey = 'speech_pitch';
   static const String _selectedAccentPreferenceKey = 'selected_accent';
   static const String _selectedVoiceStylePreferenceKey = 'selected_voice_style';
+  static const String _selectedVoiceQualityPreferenceKey = 'selected_voice_quality';
 
   final TtsService _ttsService = TtsService();
 
@@ -266,6 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
   AccentOption _selectedAccent = TtsService.accents.first;
   SpeechSpeed _selectedSpeed = SpeechSpeed.normal;
   VoiceStyle _selectedVoiceStyle = VoiceStyle.defaultVoice;
+  VoiceQuality _selectedVoiceQuality = VoiceQuality.device;
   double _pitch = 1.0;
   bool _isLoading = false;
   String? _errorMessage;
@@ -345,6 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final savedPitch = prefs.getDouble(_speechPitchPreferenceKey);
       final savedAccent = prefs.getString(_selectedAccentPreferenceKey);
       final savedVoiceStyle = prefs.getString(_selectedVoiceStylePreferenceKey);
+      final savedVoiceQuality = prefs.getString(_selectedVoiceQualityPreferenceKey);
 
       final selectedSpeed = savedRate == null
           ? _selectedSpeed
@@ -353,6 +356,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final selectedAccent = _accentForPreference(savedAccent) ?? _selectedAccent;
       final selectedVoiceStyle =
           _voiceStyleForPreference(savedVoiceStyle) ?? _selectedVoiceStyle;
+      final selectedVoiceQuality =
+          _voiceQualityForPreference(savedVoiceQuality) ?? _selectedVoiceQuality;
 
       if (!mounted) {
         return;
@@ -363,6 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _pitch = selectedPitch;
         _selectedAccent = selectedAccent;
         _selectedVoiceStyle = selectedVoiceStyle;
+        _selectedVoiceQuality = selectedVoiceQuality;
       });
       _applyPlaybackSettings();
     } catch (error) {
@@ -384,6 +390,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveSelectedVoiceStyle(VoiceStyle voiceStyle) async {
     await _saveStringPreference(_selectedVoiceStylePreferenceKey, voiceStyle.label);
+  }
+
+  Future<void> _saveSelectedVoiceQuality(VoiceQuality voiceQuality) async {
+    await _saveStringPreference(_selectedVoiceQualityPreferenceKey, voiceQuality.label);
   }
 
   Future<void> _saveDoublePreference(String key, double value) async {
@@ -433,6 +443,19 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final voiceStyle in VoiceStyle.values) {
       if (voiceStyle.label == value || voiceStyle.name == value) {
         return voiceStyle;
+      }
+    }
+    return null;
+  }
+
+  VoiceQuality? _voiceQualityForPreference(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+
+    for (final voiceQuality in VoiceQuality.values) {
+      if (voiceQuality.label == value || voiceQuality.name == value) {
+        return voiceQuality;
       }
     }
     return null;
@@ -670,6 +693,7 @@ class _HomeScreenState extends State<HomeScreen> {
       speed: _selectedSpeed,
       pitch: _pitch,
       voiceStyle: _selectedVoiceStyle,
+      voiceQuality: _selectedVoiceQuality,
     );
 
     if (!mounted || playbackRequestId != _topicPlaybackRequestId) {
@@ -1163,6 +1187,7 @@ class _HomeScreenState extends State<HomeScreen> {
       speed: _selectedSpeed,
       pitch: _pitch,
       voiceStyle: _selectedVoiceStyle,
+      voiceQuality: _selectedVoiceQuality,
     );
   }
 
@@ -1182,6 +1207,7 @@ class _HomeScreenState extends State<HomeScreen> {
       speed: _selectedSpeed,
       pitch: _pitch,
       voiceStyle: _selectedVoiceStyle,
+      voiceQuality: _selectedVoiceQuality,
     );
   }
 
@@ -1224,6 +1250,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedVoiceStyle = voiceStyle;
     });
     unawaited(_saveSelectedVoiceStyle(voiceStyle));
+    _restartPlaybackIfActive();
+  }
+
+  void _changeVoiceQuality(VoiceQuality voiceQuality) {
+    setState(() {
+      _selectedVoiceQuality = voiceQuality;
+    });
+    unawaited(_saveSelectedVoiceQuality(voiceQuality));
     _restartPlaybackIfActive();
   }
 
@@ -1531,7 +1565,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 .toDouble(),
           ),
           settingsLabel:
-              'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Voice: ${_selectedVoiceStyle.label}',
+              'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Quality: ${_selectedVoiceQuality.label} • Voice: ${_selectedVoiceStyle.label}',
           onSeekBackward10: () => _seekBySeconds(-10),
           onSeekForward10: () => _seekBySeconds(10),
           onSeekBackward30: () => _seekBySeconds(-30),
@@ -1687,6 +1721,30 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const SizedBox(height: 14),
+            DropdownButtonFormField<VoiceQuality>(
+              initialValue: _selectedVoiceQuality,
+              decoration: const InputDecoration(
+                labelText: 'Voice Quality',
+                prefixIcon: Icon(Icons.auto_awesome_rounded),
+                border: OutlineInputBorder(),
+              ),
+              items: VoiceQuality.values
+                  .map(
+                    (voiceQuality) => DropdownMenuItem(
+                      value: voiceQuality,
+                      child: Text(voiceQuality.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (voiceQuality) {
+                if (voiceQuality == null) {
+                  return;
+                }
+
+                _changeVoiceQuality(voiceQuality);
+              },
+            ),
+            const SizedBox(height: 14),
             DropdownButtonFormField<VoiceStyle>(
               initialValue: _selectedVoiceStyle,
               decoration: const InputDecoration(
@@ -1794,7 +1852,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Voice: ${_selectedVoiceStyle.label}',
+              'Speed: ${_selectedSpeed.label} • Pitch: ${_pitch.toStringAsFixed(1)} • Accent: ${_selectedAccent.label} • Quality: ${_selectedVoiceQuality.label} • Voice: ${_selectedVoiceStyle.label}',
               style: const TextStyle(color: Color(0xFF475569), fontSize: 13),
             ),
           ],
