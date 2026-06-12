@@ -15,6 +15,7 @@ dependencies:
   # Uses the no-Windows fork so Windows builds do not require nuget.exe.
   # Windows speech is handled by lib/services/tts_service.dart via PowerShell SAPI.
   flutter_tts_no_windows: ^1.0.0
+  shared_preferences: ^2.3.5
 
 dev_dependencies:
   flutter_test:
